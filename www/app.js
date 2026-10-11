@@ -815,7 +815,7 @@ function openFood(pre = {}, editId = null) {
   const v = k => pre[k] != null && pre[k] !== '' ? fmt(pre[k], 1).replace(/\s/g, '') : '';
   const inc = editId ? pre.inc : db.settings.carbsIncludeFiber;
   openDialog(`
-    <h2>${editId ? 'Uredi unos' : 'Dodaj hranu'}</h2>${pre.code ? `<p class="muted small" style="margin:-6px 0 10px">Barkod ${h(pre.code)}</p>` : ''}
+    <h2>${editId ? 'Uredi unos' : 'Dodaj hranu'}</h2><input type="hidden" name="code" value="${h(pre.code || '')}">${pre.code ? `<p class="muted small" style="margin:-6px 0 10px">Barkod ${h(pre.code)}</p>` : ''}
     <div class="stack">
       <label>Naziv<input name="name" required value="${h(pre.name || '')}" placeholder="npr. Jaja, slanina, avokado" autocomplete="off"></label>
       <div class="grid2">
@@ -837,7 +837,7 @@ function openFood(pre = {}, editId = null) {
       <div class="btns end">
         ${editId ? '<button type="button" class="btn danger" data-action="del-food" data-id="' + editId + '" style="margin-right:auto">Obriši</button>' : ''}
         <button type="button" class="btn" data-action="close">Odustani</button>
-        ${editId ? '' : '<button type="button" class="btn" data-action="fav-only">★ Samo u favorite</button>'}
+        ${editId ? '' : '<button type="button" class="btn" data-action="food-store">▥ Spremi u bazu</button><button type="button" class="btn" data-action="fav-only">★ Samo u favorite</button>'}
         <button class="btn primary">${editId ? 'Spremi' : 'Dodaj'}</button>
       </div>
     </div>`,
@@ -1197,7 +1197,7 @@ function searchItems(q) {
     seen.add(k); out.push({ ...it, tag });
   };
   db.favorites.forEach(f => push(f, 'fav'));
-  Object.entries(db.products).forEach(([code, p]) => push({ ...p, code, per100: true }, 'code'));
+  Object.entries(db.products).forEach(([code, p]) => push({ per100: true, ...p, code }, 'code'));
   quickItems().filter(x => !x.fav).forEach(r => push(r, 'recent'));
   if (!words.length) return out; // bez upita: moje namirnice po podnaslovima, ispod popis po sekcijama
   FOOD_DB.forEach(row => push(dbItem(row), 'db'));
@@ -1215,7 +1215,7 @@ function itemRow(it, src, i, sub = true) {
 const resultRows = (list, src) => list.map((it, i) => itemRow(it, src, i)).join('');
 // Moje namirnice u podnaslovima koji se otvaraju dodirom
 function myFoodGroups(list) {
-  const groups = [['fav', '★ Favoriti'], ['code', '▥ Skenirani proizvodi'], ['recent', '↺ Nedavno uneseno']];
+  const groups = [['fav', '★ Favoriti'], ['code', '▥ Spremljeni i skenirani'], ['recent', '↺ Nedavno uneseno']];
   return groups.map(([tag, title]) => {
     const rows = list.map((it, i) => [it, i]).filter(([it]) => it.tag === tag);
     if (!rows.length) return '';
@@ -1319,7 +1319,7 @@ async function offSearch() {
 }
 async function lookupBarcode(code) {
   const known = db.products[code];
-  if (known) return openFood({ ...known, code, per100: true });
+  if (known) return openFood({ per100: true, ...known, code });
   const msg = $('#scanmsg');
   if (msg) msg.textContent = `Tražim proizvod ${code}…`;
   try {
@@ -2201,6 +2201,23 @@ const actions = {
     const on = toggleFavorite(it);
     el.classList.toggle('on', on);
     toast(on ? `★ ${it.name} dodano u favorite` : 'Uklonjeno iz favorita');
+  },
+  'food-store': () => {
+    // spremi namirnicu u vlastitu bazu (skenirano / ručno) bez unosa u obrok
+    const fd = Object.fromEntries(new FormData(dlg.querySelector('form')));
+    const name = (fd.name || '').trim();
+    if (!name) { toast('Upiši naziv'); return; }
+    const vals = { carbs: num(fd.carbs) || 0, fiber: num(fd.fiber) || 0, fat: num(fd.fat) || 0, protein: num(fd.protein) || 0 };
+    const g = num(fd.grams), isPer = !!fd.per100;
+    let entry;
+    if (isPer) entry = { name, ...vals, grams: g || 100, per100: true };
+    else if (g) { const k = 100 / g; entry = { name, carbs: r1(vals.carbs * k), fiber: r1(vals.fiber * k), fat: r1(vals.fat * k), protein: r1(vals.protein * k), grams: g, per100: true }; }
+    else entry = { name, ...vals, grams: null, per100: false };
+    entry.inc = !!db.settings.carbsIncludeFiber;
+    const key = fd.code || Object.keys(db.products).find(k => norm(db.products[k].name) === norm(name)) || 'moj-' + uid();
+    db.products[key] = entry;
+    save(); closeDialog(); render();
+    toast(`▥ ${name} spremljeno u tvoje namirnice`);
   },
   'fav-only': () => {
     const fd = Object.fromEntries(new FormData(dlg.querySelector('form')));
