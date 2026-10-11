@@ -853,7 +853,7 @@ function openFood(pre = {}, editId = null) {
         const grams = g || 100, k = grams / 100;
         item = { ...item, carbs: r1(vals.carbs * k), fiber: r1(vals.fiber * k), fat: r1(vals.fat * k), protein: r1(vals.protein * k), grams, src: vals };
       } else item = { ...item, ...vals, grams: g || null };
-      if (old) db.foods[db.foods.indexOf(old)] = item; else db.foods.push(item);
+      if (old) db.foods[db.foods.indexOf(old)] = item; else { db.foods.push(item); onFoodAdded(item); }
       if (fd.fav) saveFavorite(item);
       if (code && isPer) db.products[code] = { name, ...vals, grams: g || 100, inc: item.inc };
       save();
@@ -1406,7 +1406,7 @@ async function openScanner() {
 }
 
 /* ================= Post (intermitentni post) ================= */
-let lastFastPhase = null;
+let lastFastKey = null;
 const FAST_GOALS = [12, 14, 16, 18, 20, 23, 24];
 const FAST_PHASES = [
   [0, 'Probava zadnjeg obroka'],
@@ -1421,106 +1421,119 @@ const hmTxt = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d
 const whenTxt = t => { const d = iso(new Date(t)); return (d === today() ? '' : d === addDays(today(), -1) ? 'jučer ' : d === addDays(today(), 1) ? 'sutra ' : shortDate(d) + ' ') + hmTxt(t); };
 const toLocalInput = t => { const d = new Date(t); return `${iso(d)}T${hmTxt(t)}`; };
 const goalLabel = g => g >= 24 ? `${g} h` : `${g}:${24 - g}`;
-// Prozor za jelo: 24 − post (16:8 → 8 h). Post od 24 h i dulje nema prozora (jedan produženi post).
+// Prozor za jelo: 24 − post (16:8 → 8 h). Post od 24 h i dulje nema prozora.
 const eatHours = g => g < 24 ? 24 - g : 0;
+const foodTime = f => { const d = parseISO(f.date), [H, M] = String(f.time || '12:00').split(':').map(Number); d.setHours(H || 0, M || 0, 0, 0); return d.getTime(); };
+// obrok = unos s nešto kalorija (crna kava ili voda ne prekidaju post)
+const isMeal = f => kcalOf(f) >= 20;
+const lastMealBetween = (a, b) => { const t = db.foods.filter(isMeal).map(foodTime).filter(x => x >= a && x <= b); return t.length ? Math.max(...t) : null; };
 function lastMealTime() {
-  const f = db.foods.filter(x => x.time).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))[0];
-  if (!f) return null;
-  const d = parseISO(f.date), [H, M] = f.time.split(':').map(Number);
-  d.setHours(H, M, 0, 0);
-  const t = d.getTime();
-  return t <= Date.now() && Date.now() - t < 48 * 3600e3 ? t : null;
+  const t = lastMealBetween(Date.now() - 48 * 3600e3, Date.now());
+  return t;
 }
-// Ciklus: post (crveno) → prozor za jelo (zeleno) → post … dok korisnik ne završi
-function fastState(f = db.fast, now = Date.now()) {
-  const fastMs = f.goal * 3600e3, eatMs = eatHours(f.goal) * 3600e3, cycleMs = fastMs + eatMs;
-  const el = Math.max(0, now - f.start);
-  const n = eatMs ? Math.floor(el / cycleMs) : 0;            // broj završenih ciklusa
-  const cycleStart = f.start + n * cycleMs, pos = now - cycleStart;
-  const eating = eatMs > 0 && pos >= fastMs;
-  const phaseStart = eating ? cycleStart + fastMs : cycleStart;
-  const phaseEnd = eating ? cycleStart + cycleMs : cycleStart + fastMs;
-  const phaseEl = now - phaseStart;
-  const over = !eatMs && el > fastMs;                          // produženi post nakon cilja
-  const pct = Math.min(1, phaseEl / (eating ? eatMs : fastMs));
-  const cyclePct = eatMs ? Math.min(1, pos / cycleMs) : Math.min(1, el / fastMs);
-  let info, phase;
-  if (eating) {
-    info = `Prozor za jelo do ${whenTxt(phaseEnd)} (još ${durTxt(phaseEnd - now)}) · zatim post ${f.goal} h`;
-    phase = `Prozor za jelo · ${n + 1}. ciklus`;
-  } else {
-    info = over ? `Cilj od ${f.goal} h postignut u ${whenTxt(phaseEnd)} · +${durTxt(el - fastMs)}`
-      : `Post do ${whenTxt(phaseEnd)} (još ${durTxt(phaseEnd - now)})${eatMs ? ` · zatim jelo ${eatHours(f.goal)} h` : ''}`;
-    phase = FAST_PHASES.filter(p => phaseEl / 3600e3 >= p[0]).at(-1)[1] + (eatMs && n ? ` · ${n + 1}. ciklus` : '');
-  }
-  return { el, n, eating, phaseStart, phaseEnd, phaseEl, pct, cyclePct, fastMs, eatMs, info, phase, over };
-}
-// Završene faze posta upisuju se u povijest (za Analizu i izvještaje) i kad ciklus traje danima
-function syncFastHistory() {
+
+/* Post prati stvarne obroke:
+   faza 'fast' traje dok se ne upiše prvi obrok (ili „Jedem“) – i nakon cilja brojač ide dalje;
+   faza 'eat' traje 24 − cilj sati od prvog obroka, zatim sama počinje nova faza posta od zadnjeg obroka. */
+function fastNormalize() {
   const f = db.fast;
-  if (!f || !eatHours(f.goal)) return false;
-  const fastMs = f.goal * 3600e3, cycleMs = fastMs + eatHours(f.goal) * 3600e3;
-  let added = false;
-  for (let k = 0; ; k++) {
-    const s = f.start + k * cycleMs, e = s + fastMs;
-    if (e > Date.now()) break;
-    if (e <= (f.loggedUntil || 0)) continue;
-    db.fasts.push({ id: uid(), start: s, end: e, goal: f.goal });
-    f.loggedUntil = e; added = true;
+  if (!f || f.phase) return;
+  // stari zapis {start, goal}: preračun prema fiksnom rasporedu
+  const fastMs = f.goal * 3600e3, eatMs = eatHours(f.goal) * 3600e3, now = Date.now();
+  let phase = 'fast', ps = f.start;
+  if (eatMs) {
+    const cyc = fastMs + eatMs, n = Math.floor((now - f.start) / cyc), cs = f.start + n * cyc;
+    if (now - cs >= fastMs) { phase = 'eat'; ps = cs + fastMs; } else ps = cs;
   }
-  return added;
+  db.fast = { goal: f.goal, phase, phaseStart: ps, cycle: 1 };
+}
+function advanceFast(now = Date.now()) {
+  const f = db.fast;
+  if (!f) return false;
+  fastNormalize();
+  let changed = false;
+  const eatMs = eatHours(f.goal) * 3600e3;
+  while (db.fast.phase === 'eat' && eatMs && now >= db.fast.phaseStart + eatMs) {
+    const end = db.fast.phaseStart + eatMs;
+    const last = lastMealBetween(db.fast.phaseStart, end);
+    db.fast.phase = 'fast';
+    db.fast.phaseStart = last ?? end;   // post se računa od zadnjeg obroka u prozoru
+    db.fast.cycle = (db.fast.cycle || 1) + 1;
+    changed = true;
+  }
+  return changed;
+}
+function fastState(now = Date.now()) {
+  const f = db.fast, goalMs = f.goal * 3600e3, eatMs = eatHours(f.goal) * 3600e3, ps = f.phaseStart;
+  if (f.phase === 'eat') {
+    const end = ps + eatMs, last = lastMealBetween(ps, now);
+    return { eating: true, done: false, ps, end, el: now - ps, pct: Math.min(1, (now - ps) / eatMs), last,
+      info: `Prozor za jelo do ${whenTxt(end)} (još ${durTxt(end - now)})${last ? ` · zadnji obrok ${hmTxt(last)}` : ''}`,
+      phase: `Prozor za jelo · ${f.cycle || 1}. ciklus · zatim post ${f.goal} h od zadnjeg obroka` };
+  }
+  const el = now - ps, done = el >= goalMs;
+  return { eating: false, done, ps, end: ps + goalMs, el, pct: Math.min(1, el / goalMs),
+    info: done
+      ? `Cilj od ${f.goal} h ostvaren u ${whenTxt(ps + goalMs)} · +${durTxt(el - goalMs)}${eatMs ? ' · prozor za jelo počinje prvim obrokom' : ''}`
+      : `Početak ${whenTxt(ps)} · cilj u ${whenTxt(ps + goalMs)} (još ${durTxt(ps + goalMs - now)})`,
+    phase: FAST_PHASES.filter(p => el / 3600e3 >= p[0]).at(-1)[1] + ((f.cycle || 1) > 1 ? ` · ${f.cycle}. ciklus` : '') };
 }
 function fastCard() {
   if (db.fast) {
-    if (syncFastHistory()) save();
+    if (advanceFast()) save();
     const st = fastState(), f = db.fast;
-    lastFastPhase = `${st.n}-${st.eating}`; // iscrtano stanje; tick javlja samo stvarne prijelaze
-    const fastPart = st.eatMs ? st.fastMs / (st.fastMs + st.eatMs) * 100 : 100;
+    lastFastKey = `${f.phase}-${f.phaseStart}-${st.done}`;
+    const color = st.eating || st.done ? 'var(--good)' : 'var(--fast)';
+    const fill = st.eating ? (1 - st.pct) * 100 : st.pct * 100;
     return `<section class="card" id="fastcard">
-      <div class="card-h"><h2>Post ${goalLabel(f.goal)}</h2><span class="fast-badge ${st.eating ? 'eat' : 'fast'}" id="fastBadge">${st.eating ? 'Jelo' : 'Post'}</span></div>
-      <div class="big" id="fastClock" style="color:${st.eating ? 'var(--good)' : 'var(--fast)'}">${st.eating ? durTxt(st.phaseEnd - Date.now()) : durTxt(st.phaseEl)}</div>
-      <div class="muted small" id="fastClockLbl">${st.eating ? 'preostalo za jelo' : 'trajanje posta'}</div>
-      <div class="cyclebar" aria-hidden="true">
-        <div class="cyclefill"><i class="seg-fast" style="width:${fastPart}%"></i><i class="seg-eat" style="width:${100 - fastPart}%"></i></div>
-        <b id="fastMarker" style="left:${st.cyclePct * 100}%"></b>
-      </div>
-      <div class="cyclelbl muted small"><span>post ${f.goal} h</span>${st.eatMs ? `<span>jelo ${eatHours(f.goal)} h</span>` : ''}</div>
+      <div class="card-h"><h2>Post ${goalLabel(f.goal)}</h2><span class="fast-badge ${st.eating || st.done ? 'eat' : 'fast'}">${st.eating ? 'Jelo' : st.done ? 'Možeš jesti' : 'Post'}</span></div>
+      <div class="big" id="fastClock" style="color:${color}">${st.eating ? durTxt(st.end - Date.now()) : durTxt(st.el)}</div>
+      <div class="muted small">${st.eating ? 'preostalo za jelo' : st.done ? 'trajanje posta – brojač ide dalje do prvog obroka' : 'trajanje posta'}</div>
+      <div class="phasebar"><i id="fastFill" style="width:${fill}%;background:${color}"></i></div>
       <div class="small" id="fastInfo" style="margin-top:6px">${st.info}</div>
       <div class="small muted" id="fastPhase" style="margin-top:2px">${st.phase}</div>
-      <div class="btns" style="margin-top:12px"><button class="btn primary" style="flex:1" data-action="fast-end">Završi post</button><button class="btn" data-action="fast-edit">Uredi</button></div>
+      <div class="btns" style="margin-top:12px">
+        ${st.eating
+          ? '<button class="btn primary" style="flex:1" data-action="fast-now">Počni post</button>'
+          : `<button class="btn ${st.done ? 'primary' : ''}" style="flex:1" data-action="fast-eat">Jedem sada</button>`}
+        <button class="btn" data-action="fast-end">Završi</button><button class="btn" data-action="fast-edit">Uredi</button>
+      </div>
+      <p class="muted small" style="margin:8px 0 0">${st.eating ? 'Novi post počinje sam kad prozor istekne – od zadnjeg upisanog obroka.' : 'Upis obroka u Hrani sam pokreće prozor za jelo.'}</p>
     </section>`;
   }
   const last = db.fasts.at(-1), meal = lastMealTime(), g = db.settings.fastGoal;
   return `<section class="card">
     <div class="card-h"><h2>Post</h2><span class="muted">${last ? `zadnji: ${durTxt(last.end - last.start)}` : ''}</span></div>
     <div class="seg" style="display:flex;overflow-x:auto">${FAST_GOALS.map(v => `<button class="${g === v ? 'on' : ''}" data-action="fast-goal" data-v="${v}">${goalLabel(v)}</button>`).join('')}</div>
-    <p class="muted small" style="margin:8px 0 0">${eatHours(g) ? `Ciklus se ponavlja: ${g} h posta (crveno), zatim ${eatHours(g)} h za jelo (zeleno) – sve dok ne dodirneš Završi post.` : `Produženi post od ${g} h, bez prozora za jelo.`}</p>
+    <p class="muted small" style="margin:8px 0 0">${eatHours(g) ? `Post traje dok ne upišeš prvi obrok (cilj ${g} h), zatim ${eatHours(g)} h za jelo, pa opet post – sve dok ne dodirneš Završi.` : `Produženi post od ${g} h – traje do prvog obroka ili dok ga ne završiš.`}</p>
     <div class="btns" style="margin-top:12px">
       <button class="btn primary" style="flex:1" data-action="fast-start" data-from="now">Započni sada</button>
       ${meal ? `<button class="btn" data-action="fast-start" data-from="meal">Od zadnjeg obroka (${whenTxt(meal)})</button>` : ''}
     </div>
   </section>`;
 }
+function fastChanged(msg) {
+  save(); scheduleFastNotif(); widgetSync();
+  if (msg) toast(msg);
+  if (!dlg.open) render();
+}
 function tickFast() {
-  if (!db.fast) { lastFastPhase = null; return; }
-  const st = fastState();
-  const key = `${st.n}-${st.eating}`;
-  if (lastFastPhase && lastFastPhase !== key) {
-    // prijelaz faze: povijest, obavijest u aplikaciji, ponovno iscrtavanje
-    if (syncFastHistory()) save();
-    toast(st.eating ? `Post od ${db.fast.goal} h je završen – prozor za jelo do ${hmTxt(st.phaseEnd)}` : `Prozor za jelo je završio – počinje post (${db.fast.goal} h)`);
-    lastFastPhase = key;
+  if (!db.fast) { lastFastKey = null; return; }
+  if (advanceFast()) { fastChanged(`Prozor za jelo je završio – post od ${hmTxt(db.fast.phaseStart)}`); return; }
+  const st = fastState(), f = db.fast, key = `${f.phase}-${f.phaseStart}-${st.done}`;
+  if (lastFastKey && key !== lastFastKey) {
+    lastFastKey = key;
+    if (st.done && !st.eating) toast(`Cilj od ${f.goal} h ostvaren – možeš jesti`);
     if (!dlg.open) render();
     widgetSync();
     return;
   }
-  lastFastPhase = key;
+  lastFastKey = key;
   const c = $('#fastClock');
   if (!c) return;
-  c.textContent = st.eating ? durTxt(st.phaseEnd - Date.now()) : durTxt(st.phaseEl);
+  c.textContent = st.eating ? durTxt(st.end - Date.now()) : durTxt(st.el);
   $('#fastInfo').textContent = st.info;
-  $('#fastPhase').textContent = st.phase;
-  $('#fastMarker').style.left = (st.cyclePct * 100) + '%';
+  $('#fastFill').style.width = (st.eating ? (1 - st.pct) * 100 : st.pct * 100) + '%';
 }
 setInterval(tickFast, 1000);
 
@@ -1529,55 +1542,84 @@ const FAST_NOTIF = 1601, FAST_NOTIF_N = 8;
 async function cancelFastNotif() {
   if (LN) try { await LN.cancel({ notifications: [...Array(FAST_NOTIF_N)].map((_, i) => ({ id: FAST_NOTIF + i })) }); } catch { /* nema zakazanih */ }
 }
-// Obavijesti za sljedećih nekoliko prijelaza (kraj posta / kraj prozora za jelo); obnavljaju se pri svakom otvaranju
+// Obavijesti: cilj posta ostvaren, kraj prozora za jelo (i cilj sljedećeg posta ako se ništa ne upiše)
 async function scheduleFastNotif() {
-  if (!LN || !db.fast) return;
+  if (!LN) return;
   try {
+    await cancelFastNotif();
+    if (!db.fast) return;
     let p = await LN.checkPermissions();
     if (p.display !== 'granted') p = await LN.requestPermissions();
     if (p.display !== 'granted') return;
-    await cancelFastNotif();
-    const f = db.fast, fastMs = f.goal * 3600e3, eatMs = eatHours(f.goal) * 3600e3, now = Date.now();
-    const list = [];
-    if (!eatMs) {
-      if (f.start + fastMs > now) list.push({ at: f.start + fastMs, title: 'Post je završen', body: `Cilj od ${f.goal} h je ostvaren.` });
-    } else {
-      for (let k = 0; list.length < FAST_NOTIF_N && k < 30; k++) {
-        const s = f.start + k * (fastMs + eatMs), fe = s + fastMs, ee = fe + eatMs;
-        if (fe > now) list.push({ at: fe, title: 'Post je završen', body: `Prozor za jelo do ${hmTxt(ee)} (${eatHours(f.goal)} h).` });
-        if (ee > now && list.length < FAST_NOTIF_N) list.push({ at: ee, title: 'Prozor za jelo je završio', body: `Počinje post od ${f.goal} h – do ${hmTxt(ee + fastMs)}.` });
-      }
+    const f = db.fast, goalMs = f.goal * 3600e3, eatMs = eatHours(f.goal) * 3600e3, now = Date.now(), list = [];
+    const goalNote = at => ({ at, title: 'Cilj posta je ostvaren', body: eatMs ? `${f.goal} h posta – možeš jesti. Prozor za jelo (${eatHours(f.goal)} h) počinje prvim upisanim obrokom.` : `Cilj od ${f.goal} h je ostvaren.` });
+    if (f.phase === 'fast') { if (f.phaseStart + goalMs > now) list.push(goalNote(f.phaseStart + goalMs)); }
+    else {
+      const end = f.phaseStart + eatMs;
+      list.push({ at: end, title: 'Prozor za jelo je završio', body: `Počinje post od ${f.goal} h (od zadnjeg obroka).` });
+      list.push(goalNote(end + goalMs));
     }
-    if (list.length) await LN.schedule({ notifications: list.map((n, i) => ({ id: FAST_NOTIF + i, title: n.title, body: n.body, schedule: { at: new Date(n.at), allowWhileIdle: true }, isExactNotification: false })) });
+    const fut = list.filter(n => n.at > now);
+    if (fut.length) await LN.schedule({ notifications: fut.map((n, i) => ({ id: FAST_NOTIF + i, title: n.title, body: n.body, schedule: { at: new Date(n.at), allowWhileIdle: true }, isExactNotification: false })) });
   } catch (e) { console.error(e); }
 }
 function startFast(from) {
   const start = from === 'meal' ? lastMealTime() || Date.now() : Date.now();
-  db.fast = { start, goal: db.settings.fastGoal, loggedUntil: 0 };
-  save(); render(); scheduleFastNotif();
-  toast(eatHours(db.fast.goal) ? `Post ${goalLabel(db.fast.goal)} započet – ciklus traje dok ga ne završiš` : `Post započet · cilj ${db.fast.goal} h`);
+  db.fast = { goal: db.settings.fastGoal, phase: 'fast', phaseStart: start, cycle: 1 };
+  fastChanged(eatHours(db.fast.goal) ? `Post ${goalLabel(db.fast.goal)} započet` : `Post započet · cilj ${db.fast.goal} h`);
+}
+// Kraj faze posta u trenutku t (prvi obrok): zapis u povijest i početak prozora za jelo
+function startEating(t = Date.now(), ask = true) {
+  advanceFast();
+  const f = db.fast;
+  if (!f || f.phase !== 'fast') return false;
+  t = Math.max(t, f.phaseStart);
+  const el = t - f.phaseStart;
+  if (ask && el < f.goal * 3600e3 && !confirm(`Prekinuti post nakon ${durTxt(el)}? (cilj ${f.goal} h)`)) return false;
+  if (el >= 10 * 60e3) db.fasts.push({ id: uid(), start: f.phaseStart, end: t, goal: f.goal });
+  if (!eatHours(f.goal)) { db.fast = null; cancelFastNotif(); fastChanged(`Post završen: ${durTxt(el)}`); return true; }
+  f.phase = 'eat'; f.phaseStart = t;
+  fastChanged(`Post: ${durTxt(el)} · prozor za jelo do ${hmTxt(t + eatHours(f.goal) * 3600e3)}`);
+  return true;
+}
+// Ručni početak posta tijekom prozora za jelo – od zadnjeg obroka ako postoji
+function startFastNow() {
+  advanceFast();
+  const f = db.fast;
+  if (!f || f.phase !== 'eat') return;
+  const last = lastMealBetween(f.phaseStart, Date.now());
+  f.phase = 'fast'; f.phaseStart = last ?? Date.now(); f.cycle = (f.cycle || 1) + 1;
+  fastChanged(`Post od ${hmTxt(f.phaseStart)}${last ? ' (zadnji obrok)' : ''}`);
+}
+// Poziva se nakon upisa hrane: prvi obrok nakon početka posta otvara prozor za jelo
+function onFoodAdded(item) {
+  if (!db.fast || !isMeal(item)) return;
+  if (advanceFast()) save();
+  const f = db.fast, t = foodTime(item);
+  if (f.phase !== 'fast' || t < f.phaseStart || t > Date.now() + 15 * 60e3) return;
+  setTimeout(() => startEating(Math.min(t, Date.now()), true), 300);
 }
 function endFast() {
-  const f = db.fast;
-  if (!f) return;
-  const st = fastState();
-  const msg = st.eating
-    ? `Završiti praćenje posta ${goalLabel(f.goal)}? (sada je prozor za jelo, ${st.n + 1}. ciklus)`
-    : st.phaseEl < st.fastMs ? `Post traje ${durTxt(st.phaseEl)} od ciljanih ${f.goal} h. Završiti post?` : null;
+  if (!db.fast) return;
+  advanceFast();
+  const f = db.fast, st = fastState();
+  const msg = st.eating ? `Završiti praćenje posta ${goalLabel(f.goal)}?`
+    : !st.done ? `Post traje ${durTxt(st.el)} od ciljanih ${f.goal} h. Završiti post?` : null;
   if (msg && !confirm(msg)) return;
-  syncFastHistory();
-  // trenutna (nedovršena ili produžena) faza posta
-  if (!st.eating && st.phaseEl >= 10 * 60e3) db.fasts.push({ id: uid(), start: st.phaseStart, end: Date.now(), goal: f.goal });
+  if (!st.eating && st.el >= 10 * 60e3) db.fasts.push({ id: uid(), start: f.phaseStart, end: Date.now(), goal: f.goal });
   db.fast = null;
-  save(); cancelFastNotif(); render();
-  toast(`Post završen${st.n ? ` nakon ${st.n + 1} ciklusa` : ''}`);
+  cancelFastNotif();
+  fastChanged(st.eating ? 'Praćenje posta završeno' : `Post završen: ${durTxt(st.el)}`);
 }
 function openFastEdit() {
   if (!db.fast) return;
+  advanceFast();
+  const f = db.fast;
   openDialog(`<h2>Uredi post</h2>
     <div class="stack">
-      <label>Početak<input type="datetime-local" name="start" value="${toLocalInput(db.fast.start)}" max="${toLocalInput(Date.now())}"></label>
-      <label>Cilj (sati)<input name="goal" inputmode="numeric" value="${db.fast.goal}"></label>
+      <label>Faza<select name="phase"><option value="fast" ${f.phase === 'fast' ? 'selected' : ''}>Post</option><option value="eat" ${f.phase === 'eat' ? 'selected' : ''}>Prozor za jelo</option></select></label>
+      <label>Početak faze<input type="datetime-local" name="start" value="${toLocalInput(f.phaseStart)}" max="${toLocalInput(Date.now())}"></label>
+      <label>Cilj posta (sati)<input name="goal" inputmode="numeric" value="${f.goal}"></label>
       <div class="btns end">
         <button type="button" class="btn danger" data-action="fast-cancel" style="margin-right:auto">Poništi post</button>
         <button type="button" class="btn" data-action="close">Odustani</button><button class="btn primary">Spremi</button>
@@ -1587,8 +1629,9 @@ function openFastEdit() {
       const t = new Date(fd.start).getTime(), g = num(fd.goal);
       if (!t || t > Date.now()) { toast('Početak ne može biti u budućnosti'); return false; }
       if (!g || g < 1 || g > 120) { toast('Cilj mora biti između 1 i 120 h'); return false; }
-      db.fast = { start: t, goal: g, loggedUntil: db.fast.loggedUntil || 0 };
-      save(); scheduleFastNotif();
+      db.fast = { goal: g, phase: fd.phase === 'eat' && eatHours(g) ? 'eat' : 'fast', phaseStart: t, cycle: f.cycle || 1 };
+      advanceFast();
+      save(); scheduleFastNotif(); widgetSync();
     });
 }
 function fastWeekCard(ws, we) {
@@ -1657,7 +1700,9 @@ function widgetSync() {
       protein: Math.round(tt.protein),
       proteinTarget: db.settings.proteinTarget || 0,
       ...(lk ? { ketText: KET[lk.ket].l, ketColor: KET[lk.ket].c, ketDate: lk.date, ketTime: lk.time || '', gluWarn: lk.glu > 0 } : {}),
-      fastStart: db.fast ? db.fast.start : 0,
+      fastStart: db.fast ? db.fast.phaseStart : 0,
+      fastPhase: db.fast ? db.fast.phase : 'fast',
+      lastMeal: db.fast && db.fast.phase === 'eat' ? (lastMealBetween(db.fast.phaseStart, Date.now()) || 0) : 0,
       fastGoal: db.fast ? db.fast.goal : db.settings.fastGoal,
       appNotify: !!db.fast,
       weight: lw ? lw.kg : 0,
@@ -1675,7 +1720,7 @@ async function widgetAction() {
   try { r = (await WB.consumeAction()) || {}; } catch { /* nema radnje */ }
   if (r.fastStart && !db.fast) {
     // obavijest o cilju šalje widget, pa je aplikacija ne zakazuje ponovno
-    db.fast = { start: r.fastStart, goal: db.settings.fastGoal, loggedUntil: 0 };
+    db.fast = { goal: db.settings.fastGoal, phase: 'fast', phaseStart: r.fastStart, cycle: 1 };
     scheduleFastNotif();
     save();
     toast(`Post je pokrenut na widgetu u ${hmTxt(r.fastStart)}`);
@@ -1690,6 +1735,7 @@ async function widgetAction() {
   else if (r.action === 'weight') { state.tab = 'today'; render(); openWeightQuick(); }
   else if (r.action === 'today') { state.tab = 'today'; render(); scrollTo(0, 0); }
   else if (r.action === 'ketones') { state.tab = 'ketones'; render(); scrollTo(0, 0); }
+  else if (r.action === 'fast_eat') { state.tab = 'today'; render(); scrollTo(0, 0); if (db.fast) setTimeout(() => startEating(Date.now(), true), 350); }
   else if (r.action === 'fast_end') { state.tab = 'today'; render(); scrollTo(0, 0); if (db.fast) setTimeout(endFast, 350); }
   else if (r.action === 'fast') {
     state.tab = 'today'; render(); scrollTo(0, 0);
@@ -1866,7 +1912,8 @@ function openRecipe(id) {
     </div>`,
     fd => {
       const p = num(fd.portions) || 1, mm = recipeMacros(r, p);
-      db.foods.push({ id: uid(), date: state.date, time: nowTime(), name: r.name, carbs: mm.carbs, fiber: mm.fiber, fat: mm.fat, protein: mm.protein, grams: mm.grams, inc: false });
+      const it = { id: uid(), date: state.date, time: nowTime(), name: r.name, carbs: mm.carbs, fiber: mm.fiber, fat: mm.fat, protein: mm.protein, grams: mm.grams, inc: false };
+      db.foods.push(it); onFoodAdded(it);
       save();
       toast(`Dodano: ${r.name}${p !== 1 ? ` × ${fmt(p, 1)}` : ''}`);
     });
@@ -2115,6 +2162,8 @@ const actions = {
   'fast-goal': el => { db.settings.fastGoal = +el.dataset.v; save(); render(); },
   'fast-start': el => startFast(el.dataset.from),
   'fast-end': endFast,
+  'fast-eat': () => startEating(Date.now(), true),
+  'fast-now': startFastNow,
   'fast-edit': openFastEdit,
   'fast-cancel': () => { if (confirm('Poništiti trenutni post bez spremanja?')) { db.fast = null; cancelFastNotif(); save(); closeDialog(); render(); } },
   'del-fast': el => { if (confirm('Obrisati ovaj post?')) { db.fasts = db.fasts.filter(f => f.id !== el.dataset.id); save(); render(); } },

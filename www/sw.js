@@ -1,5 +1,5 @@
 // Offline cache aplikacijske ljuske. Povećaj VERSION pri svakoj objavi.
-const VERSION = 'porki-v26';
+const VERSION = 'porki-v27';
 const ASSETS = ['./', './index.html', './app.js', './foods.js', './recipes.js', './vendor/zxing.min.js', './styles.css', './capacitor.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable.png', './privacy.html'];
 
 self.addEventListener('install', ev => {

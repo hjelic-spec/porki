@@ -74,7 +74,7 @@ class PorkiWidget : AppWidgetProvider() {
             val p = prefs(context)
             if (p.getLong("fastStart", 0L) > 0L) return refreshAll(context)
             val now = System.currentTimeMillis()
-            p.edit().putLong("fastStart", now).putLong("pendingFastStart", now).putBoolean("nativeNotify", true).commit()
+            p.edit().putLong("fastStart", now).putString("fastPhase", "fast").putLong("pendingFastStart", now).putBoolean("nativeNotify", true).commit()
             refreshAll(context)
         }
 
@@ -156,44 +156,56 @@ class PorkiWidget : AppWidgetProvider() {
             val goal = p.getFloat("fastGoal", 16f).toDouble()
             v.setTextViewText(R.id.w_fast_label, "Post ${goalLabel(goal)}")
             if (start > 0 && start <= now) {
-                // ciklus: post (crveno) → prozor za jelo (zeleno) → post … dok korisnik ne završi
+                // post traje do prvog obroka; prozor za jelo traje 24 − cilj sati, zatim novi post od zadnjeg obroka
                 val fastMs = (goal * 3600_000).toLong()
                 val eatMs = if (goal < 24) ((24 - goal) * 3600_000).toLong() else 0L
-                val cycleMs = fastMs + eatMs
-                val elapsed = now - start
-                val n = if (eatMs > 0) elapsed / cycleMs else 0L
-                val cycleStart = start + n * cycleMs
-                val eating = eatMs > 0 && now - cycleStart >= fastMs
-                val phaseStart = if (eating) cycleStart + fastMs else cycleStart
-                val phaseEnd = if (eating) cycleStart + cycleMs else cycleStart + fastMs
-                val phaseEl = now - phaseStart
-                val phaseMs = if (eating) eatMs else fastMs
-                val pct = if (phaseMs > 0) ((phaseEl * 1000) / phaseMs).coerceIn(0, 1000).toInt() else 0
+                var phase = p.getString("fastPhase", "fast") ?: "fast"
+                var ps = start
+                var cycle = 1
+                if (phase == "eat" && eatMs > 0 && now >= ps + eatMs) {
+                    val last = p.getLong("lastMeal", 0L)
+                    ps = if (last in ps..(ps + eatMs)) last else ps + eatMs
+                    phase = "fast"; cycle = 2
+                }
+                val eating = phase == "eat"
+                val el = now - ps
+                val done = !eating && el >= fastMs
+                val pct = if (eating) (((ps + eatMs - now) * 1000) / eatMs).coerceIn(0, 1000).toInt()
+                          else ((el * 1000) / fastMs).coerceIn(0, 1000).toInt()
                 v.setViewVisibility(R.id.w_clock, View.VISIBLE)
                 v.setViewVisibility(R.id.w_fast_off, View.GONE)
                 v.setViewVisibility(R.id.w_fast_phase, View.VISIBLE)
-                v.setViewVisibility(R.id.w_progress, if (eating) View.GONE else View.VISIBLE)
-                v.setViewVisibility(R.id.w_progress_eat, if (eating) View.VISIBLE else View.GONE)
-                v.setProgressBar(if (eating) R.id.w_progress_eat else R.id.w_progress, 1000, pct, false)
-                val shown = if (eating) phaseEnd - now else phaseEl
+                val green = eating || done
+                v.setViewVisibility(R.id.w_progress, if (green) View.GONE else View.VISIBLE)
+                v.setViewVisibility(R.id.w_progress_eat, if (green) View.VISIBLE else View.GONE)
+                v.setProgressBar(if (green) R.id.w_progress_eat else R.id.w_progress, 1000, pct, false)
+                val shown = if (eating) ps + eatMs - now else el
                 val mins = shown / 60_000
-                v.setTextViewText(R.id.w_clock, "${mins / 60} h ${String.format(HR, "%02d", mins % 60)} min")
-                v.setTextColor(R.id.w_clock, ContextCompat.getColor(context, if (eating) R.color.w_good else R.color.w_fast))
-                v.setTextViewText(R.id.w_fast_label, if (eating) "Jelo, još" else "Post ${goalLabel(goal)}")
+                v.setTextViewText(R.id.w_clock, if (mins >= 600) "${mins / 60}h ${String.format(HR, "%02d", mins % 60)}m" else "${mins / 60} h ${String.format(HR, "%02d", mins % 60)} min")
+                v.setTextColor(R.id.w_clock, ContextCompat.getColor(context, if (green) R.color.w_good else R.color.w_fast))
+                v.setTextViewText(R.id.w_fast_label, when { eating -> "Jelo, još"; done -> "Možeš jesti"; else -> "Post ${goalLabel(goal)}" })
                 v.setTextViewText(
                     R.id.w_fast_info,
                     when {
-                        eating -> "Jelo do ${whenTxt(phaseEnd, today)} · zatim post ${Math.round(goal)} h"
-                        eatMs == 0L && phaseEl >= fastMs -> "Cilj ostvaren ${whenTxt(phaseEnd, today)} · +${hours(phaseEl - fastMs)}"
-                        eatMs > 0 -> "Post do ${whenTxt(phaseEnd, today)} · zatim jelo ${Math.round(24 - goal)} h"
-                        else -> "Početak ${whenTxt(start, today)} · cilj ${whenTxt(phaseEnd, today)}"
+                        eating -> "Jelo do ${whenTxt(ps + eatMs, today)} · zatim post ${Math.round(goal)} h"
+                        done -> "Cilj ostvaren ${whenTxt(ps + fastMs, today)} · +${hours(el - fastMs)}"
+                        else -> "Početak ${whenTxt(ps, today)} · cilj ${whenTxt(ps + fastMs, today)}"
                     }
                 )
-                v.setTextViewText(R.id.w_fast_phase, if (eating) "Prozor za jelo · ${n + 1}. ciklus" else PHASES.last { phaseEl / 3600_000.0 >= it.first }.second)
-                v.setTextViewText(R.id.w_fast_btn, "Završi")
-                v.setOnClickPendingIntent(R.id.w_fast_btn, launch(context, "fast_end", 5))
-                scheduleTick(context, start)
-                scheduleGoal(context, start, start + fastMs)
+                v.setTextViewText(R.id.w_fast_phase, when {
+                    eating -> "Prozor za jelo · novi post od zadnjeg obroka"
+                    done && eatMs > 0 -> "Brojač ide dalje do prvog obroka"
+                    else -> PHASES.last { el / 3600_000.0 >= it.first }.second
+                })
+                if (done && eatMs > 0) {
+                    v.setTextViewText(R.id.w_fast_btn, "Jedem")
+                    v.setOnClickPendingIntent(R.id.w_fast_btn, launch(context, "fast_eat", 9))
+                } else {
+                    v.setTextViewText(R.id.w_fast_btn, "Završi")
+                    v.setOnClickPendingIntent(R.id.w_fast_btn, launch(context, "fast_end", 5))
+                }
+                scheduleTick(context, ps)
+                scheduleGoal(context, start, if (eating) ps + eatMs else ps + fastMs)
             } else {
                 scheduleTick(context, 0L)
                 v.setViewVisibility(R.id.w_clock, View.GONE)

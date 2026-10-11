@@ -30,6 +30,8 @@ class WidgetBridgePlugin : Plugin() {
     fun update(call: PluginCall) {
         val e = context.getSharedPreferences(PorkiWidget.PREFS, Context.MODE_PRIVATE).edit()
         e.putLong("fastStart", call.getLong("fastStart") ?: 0L)
+        e.putString("fastPhase", call.getString("fastPhase") ?: "fast")
+        e.putLong("lastMeal", call.getLong("lastMeal") ?: 0L)
         e.putFloat("fastGoal", (call.getDouble("fastGoal") ?: 16.0).toFloat())
         if (call.getBoolean("appNotify") == true) e.putBoolean("nativeNotify", false)
         e.putFloat("weight", (call.getDouble("weight") ?: 0.0).toFloat())
