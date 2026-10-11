@@ -111,22 +111,32 @@ class HealthBridgePlugin : Plugin() {
             try {
                 val c = client()
                 val granted = c.permissionController.getGrantedPermissions()
-                val metrics = mutableSetOf<AggregateMetric<*>>()
-                if (permTotal in granted) metrics += TotalCaloriesBurnedRecord.ENERGY_TOTAL
-                if (permActive in granted) metrics += ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL
-                if (permSteps in granted) metrics += StepsRecord.COUNT_TOTAL
+                val energy = mutableSetOf<AggregateMetric<*>>()
+                if (permTotal in granted) energy += TotalCaloriesBurnedRecord.ENERGY_TOTAL
+                if (permActive in granted) energy += ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL
                 val zone = ZoneId.systemDefault()
+                val now = java.time.Instant.now()
                 val days = JSArray()
                 var d = LocalDate.parse(from)
                 val end = LocalDate.parse(to)
                 while (!d.isAfter(end)) {
-                    val range = TimeRangeFilter.between(d.atStartOfDay(zone).toInstant(), d.plusDays(1).atStartOfDay(zone).toInstant())
+                    val dayStart = d.atStartOfDay(zone).toInstant()
+                    // današnji dan samo do sada – inače Health Connect dodaje procjenu bazalnog metabolizma za ostatak dana
+                    val dayEnd = minOf(d.plusDays(1).atStartOfDay(zone).toInstant(), now)
+                    if (!dayEnd.isAfter(dayStart)) { d = d.plusDays(1); continue }
+                    val range = TimeRangeFilter.between(dayStart, dayEnd)
                     val o = JSObject()
                     o.put("date", d.toString())
-                    if (metrics.isNotEmpty()) {
-                        val agg = withContext(Dispatchers.IO) { c.aggregate(AggregateRequest(metrics, range)) }
-                        agg[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.let { o.put("total", it.inKilocalories) }
-                        agg[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.let { o.put("active", it.inKilocalories) }
+                    if (energy.isNotEmpty()) {
+                        val agg = withContext(Dispatchers.IO) { c.aggregate(AggregateRequest(energy, range)) }
+                        // bez ijednog izvora podataka ukupna potrošnja je samo procjena bazalnog metabolizma – ne koristi je
+                        if (agg.dataOrigins.isNotEmpty()) {
+                            agg[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.let { o.put("total", it.inKilocalories) }
+                            agg[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.let { o.put("active", it.inKilocalories) }
+                        }
+                    }
+                    if (permSteps in granted) {
+                        val agg = withContext(Dispatchers.IO) { c.aggregate(AggregateRequest(setOf(StepsRecord.COUNT_TOTAL), range)) }
                         agg[StepsRecord.COUNT_TOTAL]?.let { o.put("steps", it) }
                     }
                     if (permWeight in granted) {

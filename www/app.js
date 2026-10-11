@@ -1135,6 +1135,8 @@ async function hcSync(manual = false, days = 7) {
           basal: x.total != null && x.active != null ? Math.max(0, Math.round(x.total - x.active)) : null,
           steps: rnd(x.steps), src: 'health'
         };
+      } else if (e && e.src === 'health' && x.total == null && x.active == null && x.steps == null) {
+        delete db.energy[x.date]; // ranije spremljena procjena bez stvarnih podataka
       }
       if (db.settings.healthWeight && x.weight != null && db.weights[x.date] == null) db.weights[x.date] = r1(x.weight);
     }
