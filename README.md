@@ -37,8 +37,21 @@ https://hjelic-spec.github.io/porki/ – radi u svakom pregledniku i može se in
 
 ```
 npm install
+npm test               # testovi izračuna (Node 22, bez dodatnih paketa)
 npm run serve          # web na http://localhost:5173
 npm run apk            # sync + android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Za build je potreban JDK 21 (`JAVA_HOME`) i Android SDK. Kod je u `www/` (čisti HTML/CSS/JS, bez bundlera), a nativni most prema Health Connectu je u `android/app/src/main/java/hr/lchf/dnevnik/HealthBridgePlugin.kt`.
+Za build je potreban JDK 21 (`JAVA_HOME`) i Android SDK. Kod je u `www/` (čisti HTML/CSS/JS kao ES moduli, bez bundlera), a nativni most prema Health Connectu je u `android/app/src/main/java/hr/lchf/dnevnik/HealthBridgePlugin.kt`.
+
+Struktura `www/js/`:
+
+- `core/` – izračuni bez sučelja (makronutrijenti i ciljevi, težina, tjedna analiza, post, oblikovanje datuma i brojeva); pokriveni testovima u `tests/`
+- `store.js` – podaci u localStorageu i izračuni nad njima
+- `ui/` – zajedničko stanje, dijalog, grafovi i iscrtavanje kartice
+- `views/` – kartice (Danas, Hrana, Težina, Ketoni, Recepti, Analiza) i post
+- `dialogs/` – unos hrane, pretraga i skener, ostali unosi, postavke
+- `native/` – Health Connect i Android widget
+- `reports.js`, `backup.js`, `app.js` – izvještaji, kopija i ulazna točka (radnje i pokretanje)
+
+Testovi se pokreću i na GitHubu pri svakom pushu, a objava web-verzije čeka da prođu. Novi modul u `www/js/` treba dodati i na popis u `www/sw.js` (test to provjerava).
