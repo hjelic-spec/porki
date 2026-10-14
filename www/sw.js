@@ -1,6 +1,36 @@
 // Offline cache aplikacijske ljuske. Povećaj VERSION pri svakoj objavi.
-const VERSION = 'porki-v28';
-const ASSETS = ['./', './index.html', './app.js', './foods.js', './recipes.js', './vendor/zxing.min.js', './styles.css', './capacitor.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable.png', './privacy.html'];
+const VERSION = 'porki-v29';
+const MODULES = [
+  './js/app.js',
+  './js/backup.js',
+  './js/core/analysis.js',
+  './js/core/fast.js',
+  './js/core/format.js',
+  './js/core/ketones.js',
+  './js/core/nutrition.js',
+  './js/core/weight.js',
+  './js/dialogs/entries.js',
+  './js/dialogs/food.js',
+  './js/dialogs/scanner.js',
+  './js/dialogs/search.js',
+  './js/dialogs/settings.js',
+  './js/native/health.js',
+  './js/native/widget.js',
+  './js/reports.js',
+  './js/store.js',
+  './js/ui/charts.js',
+  './js/ui/dialog.js',
+  './js/ui/dom.js',
+  './js/ui/render.js',
+  './js/views/analysis.js',
+  './js/views/fast.js',
+  './js/views/food.js',
+  './js/views/ketones.js',
+  './js/views/recipes.js',
+  './js/views/today.js',
+  './js/views/weight.js'
+];
+const ASSETS = [...MODULES, './', './index.html', './foods.js', './recipes.js', './vendor/zxing.min.js', './styles.css', './capacitor.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable.png', './privacy.html'];
 
 self.addEventListener('install', ev => {
   ev.waitUntil(caches.open(VERSION).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
