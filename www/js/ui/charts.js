@@ -1,5 +1,6 @@
 // Grafovi (SVG): stupci, linije i točke, prsten i traka napretka
 import { fmt, h, sum } from '../core/format.js';
+import { t } from '../i18n/index.js';
 
 function niceStep(raw) {
   const p = 10 ** Math.floor(Math.log10(raw || 1)), m = raw / p;
@@ -15,7 +16,7 @@ export function chart(o) {
     else s.values.forEach(v => { if (v != null) vals.push(v); });
   }
   if (hasStack) vals.push(...stackTot.filter(v => v));
-  if (!vals.length) return `<p class="empty">${o.empty || 'Nema podataka za ovo razdoblje.'}</p>`;
+  if (!vals.length) return `<p class="empty">${o.empty || t('chart.empty')}</p>`;
   (o.refs || []).forEach(r => r.y != null && vals.push(r.y));
   let lo = Math.min(...vals), hi = Math.max(...vals);
   if (o.zero) { lo = Math.min(0, lo); hi = Math.max(0, hi); }
@@ -66,7 +67,7 @@ export function chart(o) {
   o.labels.forEach((lb, i) => {
     if ((n - 1 - i) % every === 0) g += `<text x="${x(i).toFixed(1)}" y="${H - 5}" class="ax" text-anchor="middle">${h(lb)}</text>`;
   });
-  return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="${h(o.title || 'graf')}">${g}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="${h(o.title || t('chart.aria'))}">${g}</svg>`;
 }
 
 export function donut(parts, size = 92) {

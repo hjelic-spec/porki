@@ -4,6 +4,7 @@ import { db, save } from '../store.js';
 import { dlg } from '../ui/dialog.js';
 import { plugin, state, toast } from '../ui/dom.js';
 import { render } from '../ui/render.js';
+import { t } from '../i18n/index.js';
 
 function parseHealth(text) {
   const out = {};
@@ -41,7 +42,7 @@ export function applyHealth(text) {
   if (weight != null && weight > 20 && weight < 400) db.weights[date] = r1(weight);
   save();
   state.date = date;
-  toast(`Uvezeno za ${shortDate(date)}`);
+  toast(t('hc.imported', { date: shortDate(date) }));
   return true;
 }
 
@@ -56,8 +57,8 @@ export async function hcRequest() {
   try {
     const r = await HB.requestAccess();
     hc.granted = r.granted || [];
-    if (!hc.granted.length) toast('Pristup nije odobren');
-  } catch (e) { toast('Dozvole: ' + e.message); }
+    if (!hc.granted.length) toast(t('hc.denied'));
+  } catch (e) { toast(t('hc.permError', { err: e.message })); }
 }
 export async function hcSync(manual = false, days = 7) {
   if (!HB || hc.syncing) return;
@@ -65,7 +66,7 @@ export async function hcSync(manual = false, days = 7) {
   if (manual) render();
   try {
     await hcRefresh();
-    if (hc.status !== 'available') { if (manual) toast('Health Connect nije dostupan'); return; }
+    if (hc.status !== 'available') { if (manual) toast(t('hc.unavailable')); return; }
     if (!hc.granted.length) {
       if (!manual) return;
       await hcRequest();
@@ -88,10 +89,10 @@ export async function hcSync(manual = false, days = 7) {
     }
     hc.lastSync = Date.now();
     save();
-    if (manual) toast('Sinkronizirano s Health Connectom');
+    if (manual) toast(t('hc.synced'));
   } catch (e) {
     console.error(e);
-    if (manual) toast('Sinkronizacija nije uspjela: ' + e.message);
+    if (manual) toast(t('hc.syncFailed', { err: e.message }));
   } finally {
     hc.syncing = false;
     if (!dlg.open) render();

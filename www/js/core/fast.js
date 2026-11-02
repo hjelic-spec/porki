@@ -3,27 +3,23 @@
    faza 'fast' traje dok se ne upiše prvi obrok (ili „Jedem“) – i nakon cilja brojač ide dalje;
    faza 'eat' traje 24 − cilj sati od prvog obroka, zatim sama počinje nova faza posta od zadnjeg obroka.
    Stanje: db.fast = { goal, phase: 'fast'|'eat', phaseStart, cycle } ili null; db.fasts = završeni postovi. */
+import { t } from '../i18n/index.js';
 import { parseISO, uid } from './format.js';
 import { kcalOf } from './nutrition.js';
 
 export const H = 3600e3;
 export const MIN_RECORDED = 10 * 60e3; // kraći postovi se ne upisuju u povijest
 export const FAST_GOALS = [12, 14, 16, 18, 20, 23, 24];
-export const FAST_PHASES = [
-  [0, 'Probava zadnjeg obroka'],
-  [4, 'Razina inzulina pada, tijelo troši zalihe glikogena'],
-  [12, 'Pojačano sagorijevanje masti i stvaranje ketona'],
-  [18, 'Duboka ketoza'],
-  [24, 'Produženi post – pij vodu i nadoknadi elektrolite (sol, magnezij, kalij)']
-];
+// Početak faze posta u satima; opisi su u prijevodima (fast.phase.<i>)
+export const FAST_PHASES = [0, 4, 12, 18, 24];
 export const goalLabel = g => g >= 24 ? `${g} h` : `${g}:${24 - g}`;
 // Prozor za jelo: 24 − post (16:8 → 8 h). Post od 24 h i dulje nema prozora.
 export const eatHours = g => g < 24 ? 24 - g : 0;
-export const phaseText = elMs => FAST_PHASES.filter(p => elMs / H >= p[0]).at(-1)[1];
+export const phaseText = elMs => t(`fast.phase.${FAST_PHASES.filter(h => elMs / H >= h).length - 1}`);
 export const foodTime = f => { const d = parseISO(f.date), [Hh, M] = String(f.time || '12:00').split(':').map(Number); d.setHours(Hh || 0, M || 0, 0, 0); return d.getTime(); };
 // obrok = unos s nešto kalorija (crna kava ili voda ne prekidaju post)
 export const isMeal = f => kcalOf(f) >= 20;
-export const lastMealBetween = (foods, a, b) => { const t = foods.filter(isMeal).map(foodTime).filter(x => x >= a && x <= b); return t.length ? Math.max(...t) : null; };
+export const lastMealBetween = (foods, a, b) => { const ts = foods.filter(isMeal).map(foodTime).filter(x => x >= a && x <= b); return ts.length ? Math.max(...ts) : null; };
 
 // Stari zapis {start, goal}: preračun prema fiksnom rasporedu
 export function fastNormalize(db, now = Date.now()) {
@@ -80,18 +76,18 @@ export function startFast(db, goal, start) {
   db.fast = { goal, phase: 'fast', phaseStart: start, cycle: 1 };
 }
 // Trajanje posta kad bi prvi obrok bio u trenutku t
-export const fastElapsedAt = (f, t) => Math.max(t, f.phaseStart) - f.phaseStart;
+export const fastElapsedAt = (f, at) => Math.max(at, f.phaseStart) - f.phaseStart;
 // Kraj faze posta u trenutku t (prvi obrok): zapis u povijest i početak prozora za jelo.
 // Vraća { el, ended } (ended = post bez prozora za jelo je završen) ili null ako post nije u fazi posta.
-export function startEating(db, t) {
+export function startEating(db, at) {
   const f = db.fast;
   if (!f || f.phase !== 'fast') return null;
-  t = Math.max(t, f.phaseStart);
-  const el = t - f.phaseStart;
-  if (el >= MIN_RECORDED) db.fasts.push({ id: uid(), start: f.phaseStart, end: t, goal: f.goal });
-  if (!eatHours(f.goal)) { db.fast = null; return { el, ended: true, t }; }
-  f.phase = 'eat'; f.phaseStart = t;
-  return { el, ended: false, t };
+  at = Math.max(at, f.phaseStart);
+  const el = at - f.phaseStart;
+  if (el >= MIN_RECORDED) db.fasts.push({ id: uid(), start: f.phaseStart, end: at, goal: f.goal });
+  if (!eatHours(f.goal)) { db.fast = null; return { el, ended: true, t: at }; }
+  f.phase = 'eat'; f.phaseStart = at;
+  return { el, ended: false, t: at };
 }
 // Ručni početak posta tijekom prozora za jelo – od zadnjeg obroka ako postoji
 export function startFastFromWindow(db, now = Date.now()) {
@@ -114,6 +110,6 @@ export function endFast(db, now = Date.now()) {
 export function mealEndsFast(db, item, now = Date.now()) {
   const f = db.fast;
   if (!f || f.phase !== 'fast' || !isMeal(item)) return false;
-  const t = foodTime(item);
-  return t >= f.phaseStart && t <= now + 15 * 60e3;
+  const at = foodTime(item);
+  return at >= f.phaseStart && at <= now + 15 * 60e3;
 }

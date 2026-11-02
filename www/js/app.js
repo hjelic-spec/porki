@@ -1,4 +1,5 @@
 // Ulazna točka: radnje (data-action), događaji i pokretanje
+import { deviceLang, setLang, t } from './i18n/index.js';
 import { addDays, fmt, norm, num, r1, sgn, shortDate, today, uid } from './core/format.js';
 import { exportData, importData } from './backup.js';
 import { fillEmptyEnergy, openEnergy, openEnergyBulk, openKetone } from './dialogs/entries.js';
@@ -40,15 +41,15 @@ const actions = {
   'fast-now': startFastNow,
   'fast-edit': openFastEdit,
   'fast-cancel': cancelFast,
-  'del-fast': el => { if (confirm('Obrisati ovaj post?')) { db.fasts = db.fasts.filter(f => f.id !== el.dataset.id); save(); render(); } },
+  'del-fast': el => { if (confirm(t('confirm.delFast'))) { db.fasts = db.fasts.filter(f => f.id !== el.dataset.id); save(); render(); } },
   'edit-food': el => { const f = db.foods.find(x => x.id === el.dataset.id); if (f) openFood(f.src ? { ...f, ...f.src, per100: true } : f, f.id); },
-  'del-food': el => { db.foods = db.foods.filter(f => f.id !== el.dataset.id); save(); closeDialog(); render(); toast('Obrisano'); },
+  'del-food': el => { db.foods = db.foods.filter(f => f.id !== el.dataset.id); save(); closeDialog(); render(); toast(t('toast.deleted')); },
   quick: el => { const q = state.quick[+el.dataset.i]; if (q) openFood({ ...q, fav: false, time: undefined }); },
   'fav-toggle': el => {
     const f = db.foods.find(x => x.id === el.dataset.id); if (!f) return;
     const k = f.name.toLowerCase();
-    if (db.favorites.some(x => x.name.toLowerCase() === k)) { db.favorites = db.favorites.filter(x => x.name.toLowerCase() !== k); toast('Uklonjeno iz favorita'); }
-    else { saveFavorite(f); toast('Dodano u favorite'); }
+    if (db.favorites.some(x => x.name.toLowerCase() === k)) { db.favorites = db.favorites.filter(x => x.name.toLowerCase() !== k); toast(t('fav.removed')); }
+    else { saveFavorite(f); toast(t('fav.added')); }
     save(); render();
   },
   'edit-favs': openFavs,
@@ -65,7 +66,7 @@ const actions = {
     const m = recipeMacros(r);
     const on = toggleFavorite({ name: r.name, per100: false, grams: m.grams, carbs: m.carbs, fiber: m.fiber, fat: m.fat, protein: m.protein, inc: false });
     el.textContent = on ? '★ U favoritima' : '☆ U favorite';
-    toast(on ? 'Recept dodan u favorite (1 porcija)' : 'Uklonjeno iz favorita');
+    toast(on ? t('fav.recipeAdded') : t('fav.removed'));
   },
   'fav-new': () => openFood({ per100: true }),
   'fav-item': el => {
@@ -74,7 +75,7 @@ const actions = {
     if (!it) return;
     const on = toggleFavorite(it);
     el.classList.toggle('on', on);
-    toast(on ? `★ ${it.name} dodano u favorite` : 'Uklonjeno iz favorita');
+    toast(on ? t('fav.itemAdded', { name: it.name }) : t('fav.removed'));
   },
   'food-store': () => {
     // spremi namirnicu u vlastitu bazu (skenirano / ručno) bez unosa u obrok
@@ -91,7 +92,7 @@ const actions = {
     const key = fd.code || Object.keys(db.products).find(k => norm(db.products[k].name) === norm(name)) || 'moj-' + uid();
     db.products[key] = entry;
     save(); closeDialog(); render();
-    toast(`▥ ${name} spremljeno u tvoje namirnice`);
+    toast(t('food.storedToast', { name }));
   },
   'fav-only': () => {
     const fd = Object.fromEntries(new FormData(dlg.querySelector('form')));
@@ -101,12 +102,12 @@ const actions = {
     db.favorites = db.favorites.filter(f => f.name.toLowerCase() !== name.toLowerCase());
     toggleFavorite(it);
     closeDialog(); render();
-    toast(`★ ${name} spremljeno u favorite`);
+    toast(t('fav.savedToast', { name }));
   },
   'del-fav': el => { db.favorites = db.favorites.filter(f => f.id !== el.dataset.id); save(); el.closest('li').remove(); render(); },
   'add-ketone': openKetone,
-  'del-ketone': el => { if (confirm('Obrisati mjerenje?')) { db.ketones = db.ketones.filter(k => k.id !== el.dataset.id); save(); render(); } },
-  'del-weight': el => { if (confirm(`Obrisati mjerenje za ${shortDate(el.dataset.d)}?`)) { delete db.weights[el.dataset.d]; save(); render(); } },
+  'del-ketone': el => { if (confirm(t('confirm.delKetone'))) { db.ketones = db.ketones.filter(k => k.id !== el.dataset.id); save(); render(); } },
+  'del-weight': el => { if (confirm(t('confirm.delWeight', { date: shortDate(el.dataset.d) }))) { delete db.weights[el.dataset.d]; save(); render(); } },
   wrange: el => { state.wRange = +el.dataset.v; render(); },
   'energy-edit': openEnergy,
   'energy-bulk': el => openEnergyBulk(+el.dataset.days || 30),
@@ -120,8 +121,8 @@ const actions = {
   export: exportData,
   import: importData,
   wipe: () => {
-    if (confirm('Trajno obrisati SVE podatke s ovog uređaja?') && confirm('Sigurno? Ovo se ne može poništiti.')) {
-      setDb(emptyDb(), false); save(); closeDialog(); render(); toast('Podaci obrisani');
+    if (confirm(t('confirm.wipe1')) && confirm(t('confirm.wipe2'))) {
+      setDb(emptyDb(), false); save(); closeDialog(); render(); toast(t('toast.wiped'));
     }
   }
 };
@@ -138,14 +139,14 @@ document.addEventListener('submit', ev => {
     const date = f.date ? f.date.value || state.date : state.date;
     const raw = f.kg.value.trim();
     if (!raw && f.dataset.form === 'weight') {
-      if (db.weights[date] != null && confirm('Obrisati težinu za ovaj dan?')) { delete db.weights[date]; save(); render(); }
+      if (db.weights[date] != null && confirm(t('confirm.delWeightDay'))) { delete db.weights[date]; save(); render(); }
       return;
     }
     const kg = num(raw);
-    if (kg == null || kg < 20 || kg > 400) { toast('Unesi težinu u kg, npr. 85,4'); return; }
+    if (kg == null || kg < 20 || kg > 400) { toast(t('weight.invalid')); return; }
     db.weights[date] = r1(kg); save();
     const prev = latestWeight(addDays(date, -1));
-    toast(`Spremljeno ${fmt(kg, 1)} kg${prev ? ` (${sgn(kg - prev.kg)})` : ''}`);
+    toast(t('weight.savedToast', { kg: fmt(kg, 1) }) + (prev ? ` (${sgn(kg - prev.kg)})` : ''));
     render();
   }
 });
@@ -165,8 +166,19 @@ addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); pwa.install
 state.lastSeen = today();
 
 /* ================= Pokretanje ================= */
+// Jezik: postojeći korisnici ostaju na hrvatskom, novi dobivaju jezik uređaja
+function initLang() {
+  if (!db.settings.lang) {
+    const hasData = db.settings.dietChosen || db.foods.length || Object.keys(db.weights).length;
+    db.settings.lang = hasData ? 'hr' : deviceLang();
+    save();
+  }
+  setLang(db.settings.lang);
+}
+
 (async function init() {
   if (NATIVE) await nativeRestore();
+  initLang();
   const qs = location.search;
   if (qs && /(total|active|basal|steps|weight)=/.test(qs)) {
     applyHealth(qs);

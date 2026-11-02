@@ -1,7 +1,8 @@
 import './helpers.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, cleanNum, daysBetween, fmt, h, num, postova, sgn, tjedan, weekStart, durTxt, norm } from '../www/js/core/format.js';
+import { addDays, cleanNum, daysBetween, fmt, h, num, sgn, weekStart, durTxt, norm } from '../www/js/core/format.js';
+import { setLang, t } from '../www/js/i18n/index.js';
 
 test('addDays i daysBetween preko prelaska na ljetno i zimsko vrijeme', () => {
   assert.equal(addDays('2026-03-28', 1), '2026-03-29');
@@ -59,10 +60,11 @@ test('fmt i sgn koriste hrvatski zapis', () => {
   assert.equal(sgn(null), '–');
 });
 
-test('padeži: tjedan i post', () => {
-  const t = [1, 2, 4, 5, 11, 12, 14, 21, 22, 25, 101, 111].map(tjedan);
-  assert.deepEqual(t, ['tjedan', 'tjedna', 'tjedna', 'tjedana', 'tjedana', 'tjedana', 'tjedana', 'tjedan', 'tjedna', 'tjedana', 'tjedan', 'tjedana']);
-  assert.deepEqual([1, 3, 7, 13, 21].map(postova), ['post', 'posta', 'postova', 'postova', 'post']);
+test('padeži: tjedan i post (hrvatska pravila množine)', () => {
+  setLang('hr');
+  const weeks = [1, 2, 4, 5, 11, 12, 14, 21, 22, 25, 101, 111].map(n => t('n.weeksCount', { n }));
+  assert.deepEqual(weeks, ['1 tjedan', '2 tjedna', '4 tjedna', '5 tjedana', '11 tjedana', '12 tjedana', '14 tjedana', '21 tjedan', '22 tjedna', '25 tjedana', '101 tjedan', '111 tjedana']);
+  assert.deepEqual([1, 3, 7, 13, 21].map(n => t('n.fastsCount', { n })), ['1 post', '3 posta', '7 postova', '13 postova', '21 post']);
 });
 
 test('durTxt, h i norm', () => {

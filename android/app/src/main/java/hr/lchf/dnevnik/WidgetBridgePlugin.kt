@@ -49,6 +49,7 @@ class WidgetBridgePlugin : Plugin() {
         val bw = call.getDouble("balWeek")
         if (bw != null) e.putFloat("balWeek", bw.toFloat()).putInt("balWeekDays", call.getInt("balWeekDays") ?: 7) else e.remove("balWeek")
         e.putString("balDate", call.getString("balDate") ?: "")
+        call.getString("lang")?.let { e.putString("lang", it) }
         e.putFloat("protein", (call.getDouble("protein") ?: 0.0).toFloat())
         e.putFloat("proteinTarget", (call.getDouble("proteinTarget") ?: 0.0).toFloat())
         val ket = call.getString("ketText")
@@ -104,7 +105,7 @@ class WidgetBridgePlugin : Plugin() {
             val send = Intent(Intent.ACTION_SEND)
                 .setType("application/json")
                 .putExtra(Intent.EXTRA_STREAM, uri)
-                .putExtra(Intent.EXTRA_SUBJECT, "Porki – sigurnosna kopija")
+                .putExtra(Intent.EXTRA_SUBJECT, call.getString("subject") ?: "Porki – sigurnosna kopija")
                 .putExtra(Intent.EXTRA_TITLE, name)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             send.clipData = ClipData.newRawUri(name, uri)
@@ -120,7 +121,7 @@ class WidgetBridgePlugin : Plugin() {
             ContextCompat.registerReceiver(context, receiver, IntentFilter(action), ContextCompat.RECEIVER_NOT_EXPORTED)
             val chosen = PendingIntent.getBroadcast(context, 20, Intent(action).setPackage(context.packageName),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
-            val chooser = Intent.createChooser(send, "Spremi ili podijeli kopiju", chosen.intentSender)
+            val chooser = Intent.createChooser(send, call.getString("title") ?: "Spremi ili podijeli kopiju", chosen.intentSender)
             activity.startActivity(chooser)
             call.resolve()
         } catch (e: Exception) {
@@ -150,7 +151,7 @@ class WidgetBridgePlugin : Plugin() {
             // ponudi samo aplikacije za e-mail; ako ih nema, običan izbornik Dijeli
             val mailOnly = Intent(send).apply { selector = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")) }
             val target = if (mailOnly.resolveActivity(context.packageManager) != null) mailOnly else send
-            activity.startActivity(Intent.createChooser(target, "Pošalji izvještaj"))
+            activity.startActivity(Intent.createChooser(target, call.getString("title") ?: "Pošalji izvještaj"))
             call.resolve()
         } catch (e: Exception) {
             call.reject(e.message ?: "Slanje nije uspjelo", e)

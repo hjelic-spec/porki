@@ -8,11 +8,12 @@ import { dayFood, db, lastMealBetween, latestWeight, save, setDb, weeklyRate, we
 import { closeDialog, dlg } from '../ui/dialog.js';
 import { plugin, state, toast } from '../ui/dom.js';
 import { render } from '../ui/render.js';
+import { getLang, t } from '../i18n/index.js';
 import { endFast, scheduleFastNotif, startEating, startFast } from '../views/fast.js';
 
 export const WB = plugin('WidgetBridge');
 if (WB) WB.addListener('widgetAction', () => widgetAction()).catch?.(() => {});
-if (WB) WB.addListener('backupShared', () => { db.settings.lastBackup = today(); save(); if (!dlg.open) render(); toast('Kopija je spremljena'); }).catch?.(() => {});
+if (WB) WB.addListener('backupShared', () => { db.settings.lastBackup = today(); save(); if (!dlg.open) render(); toast(t('backup.saved')); }).catch?.(() => {});
 let widgetTimer = 0, widgetReady = false, nativeTimer = 0;
 // Android: trajna kopija u datoteci aplikacije (WebView localStorage na disk zapisuje s odgodom)
 export function nativeSave(now = false) {
@@ -45,10 +46,11 @@ export function widgetSync() {
     const lk = [...db.ketones].sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))[0];
     const tt = totals(dayFood(today()));
     WB.update({
-      ...(diff != null ? { weightDiff: diff, weightDiffRef: last === today() && prevD === addDays(last, -1) ? 'jučer' : shortDate(prevD) } : {}),
+      ...(diff != null ? { weightDiff: diff, weightDiffRef: last === today() && prevD === addDays(last, -1) ? t('date.yesterday') : shortDate(prevD) } : {}),
       ...(balToday != null ? { balToday: Math.round(balToday) } : {}),
       ...(week.length ? { balWeek: Math.round(sum(week)), balWeekDays: week.length } : {}),
       balDate: today(),
+      lang: getLang(),
       protein: Math.round(tt.protein),
       proteinTarget: db.settings.proteinTarget || 0,
       ...(lk ? { ketText: KET[lk.ket].l, ketColor: KET[lk.ket].c, ketDate: lk.date, ketTime: lk.time || '', gluWarn: lk.glu > 0 } : {}),
@@ -75,7 +77,7 @@ export async function widgetAction() {
     db.fast = { goal: db.settings.fastGoal, phase: 'fast', phaseStart: r.fastStart, cycle: 1 };
     scheduleFastNotif();
     save();
-    toast(`Post je pokrenut na widgetu u ${hmTxt(r.fastStart)}`);
+    toast(t('widget.fastStarted', { time: hmTxt(r.fastStart) }));
     if (!dlg.open) render();
   }
   widgetReady = true;
@@ -91,6 +93,6 @@ export async function widgetAction() {
   else if (r.action === 'fast_end') { state.tab = 'today'; render(); scrollTo(0, 0); if (db.fast) setTimeout(endFast, 350); }
   else if (r.action === 'fast') {
     state.tab = 'today'; render(); scrollTo(0, 0);
-    if (!db.fast) setTimeout(() => { if (!db.fast && confirm(`Započeti post sada (cilj ${db.settings.fastGoal} h)?`)) startFast('now'); }, 350);
+    if (!db.fast) setTimeout(() => { if (!db.fast && confirm(t('widget.confirmStart', { goal: db.settings.fastGoal }))) startFast('now'); }, 350);
   }
 }

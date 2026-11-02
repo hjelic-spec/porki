@@ -5,13 +5,14 @@ import { db, save, setDb, withDefaults } from './store.js';
 import { closeDialog } from './ui/dialog.js';
 import { NATIVE, toast } from './ui/dom.js';
 import { render } from './ui/render.js';
+import { t } from './i18n/index.js';
 
 export function exportData() {
   if (NATIVE && WB) {
     // Android: izbornik Dijeli (Google disk, Datoteke, e-mail…); datum kopije tek kad je odredište odabrano
-    WB.shareBackup({ json: JSON.stringify(db, null, 1), filename: `porki-${today()}.json` })
-      .then(() => toast('Odaberi Google disk ili drugo mjesto za kopiju'))
-      .catch(e => toast('Izvoz nije uspio: ' + e.message));
+    WB.shareBackup({ json: JSON.stringify(db, null, 1), filename: `porki-${today()}.json`, title: t('backup.shareTitle'), subject: t('backup.subject') })
+      .then(() => toast(t('backup.choose')))
+      .catch(e => toast(t('backup.exportFailed', { err: e.message })));
     return;
   }
   db.settings.lastBackup = today(); save();
@@ -21,7 +22,7 @@ export function exportData() {
   a.download = `porki-${today()}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  toast('Kopija izvezena');
+  toast(t('backup.exported'));
 }
 export function importData() {
   const inp = document.createElement('input');
@@ -29,11 +30,11 @@ export function importData() {
   inp.onchange = async () => {
     try {
       const d = JSON.parse(await inp.files[0].text());
-      if (!d || typeof d !== 'object' || !('weights' in d || 'foods' in d)) throw new Error('Nepoznat format');
-      if (!confirm('Uvoz će zamijeniti sve trenutne podatke. Nastaviti?')) return;
+      if (!d || typeof d !== 'object' || !('weights' in d || 'foods' in d)) throw new Error(t('backup.unknown'));
+      if (!confirm(t('backup.confirmImport'))) return;
       setDb(withDefaults(d), false);
-      save(); closeDialog(); render(); toast('Podaci uvezeni');
-    } catch (err) { toast('Uvoz nije uspio: ' + err.message); }
+      save(); closeDialog(); render(); toast(t('backup.imported'));
+    } catch (err) { toast(t('backup.importFailed', { err: err.message })); }
   };
   inp.click();
 }

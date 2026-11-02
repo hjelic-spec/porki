@@ -2,6 +2,7 @@
 import { addDays, dayLabel, daysBetween, h, shortDate, today } from '../core/format.js';
 import { GLU, KET } from '../core/ketones.js';
 import { db } from '../store.js';
+import { t } from '../i18n/index.js';
 
 export function viewKetones() {
   const end = today();
@@ -18,28 +19,24 @@ export function viewKetones() {
   const daysMeasured = new Set(last30.map(k => k.date)).size;
   return `
   <section class="card">
-    <div class="card-h"><h2>Zadnjih 30 dana</h2><span class="muted">${daysMeasured ? `u ketozi ${daysIn}/${daysMeasured} dana` : ''}</span></div>
+    <div class="card-h"><h2>${t('ket.last30')}</h2><span class="muted">${daysMeasured ? t('ket.inKetosis', { n: daysIn, of: daysMeasured }) : ''}</span></div>
     <div class="strip">${cells.join('')}</div>
     <div class="legend" style="margin-top:8px">${KET.map(k => `<span><i style="background:${k.c};outline:1px solid var(--line)"></i>${k.l}</span>`).join('')}</div>
-    <button class="btn primary block" style="margin-top:12px" data-action="add-ketone">+ Novo mjerenje</button>
+    <button class="btn primary block" style="margin-top:12px" data-action="add-ketone">${t('ket.addBtn')}</button>
   </section>
   <section class="card">
-    <div class="card-h"><h2>Mjerenja</h2></div>
+    <div class="card-h"><h2>${t('ket.readings')}</h2></div>
     ${recent.length ? `<ul class="list">${recent.map(k => `
       <li><span class="dot" style="background:${KET[k.ket].c}"></span>
-        <div class="grow"><div><b>${KET[k.ket].l}</b> <span class="muted small">${KET[k.ket].mmol} mmol/L</span>${k.glu > 0 ? ` <span class="bad small">· glukoza ${GLU[k.glu].l}</span>` : ''}</div>
-        <div class="muted small">${dayLabel(k.date)} u ${h(k.time)}${k.note ? ' · ' + h(k.note) : ''}</div></div>
-        <button class="x-btn" data-action="del-ketone" data-id="${k.id}" aria-label="Obriši">✕</button></li>`).join('')}</ul>`
-      : '<p class="empty">Još nema mjerenja.</p>'}
+        <div class="grow"><div><b>${KET[k.ket].l}</b> <span class="muted small">${KET[k.ket].mmol} mmol/L</span>${k.glu > 0 ? ` <span class="bad small">· ${t('ket.glucose', { v: GLU[k.glu].l })}</span>` : ''}</div>
+        <div class="muted small">${dayLabel(k.date)} ${t('today.ketAt', { time: h(k.time) })}${k.note ? ' · ' + h(k.note) : ''}</div></div>
+        <button class="x-btn" data-action="del-ketone" data-id="${k.id}" aria-label="${t('btn.delete')}">✕</button></li>`).join('')}</ul>`
+      : `<p class="empty">${t('weight.none')}</p>`}
   </section>
   <section class="card help">
-    <h2>Savjeti za trakice</h2>
-    <ol>
-      <li>Mjeri uvijek u slično doba dana (npr. navečer ili prije doručka) – rezultati su tada usporedivi.</li>
-      <li>Ketone očitaj nakon <b>15 sekundi</b>, glukozu nakon <b>30 sekundi</b>.</li>
-      <li>Nakon nekoliko tjedana keto-adaptacije trakice često pokazuju manje – tijelo ketone bolje iskorištava. Negativan nalaz tada ne znači da si izašao iz ketoze.</li>
-      <li>Puno vode razrjeđuje urin i snižava očitanje.</li>
-      <li>Glukoza u urinu nije uobičajena. Ako se ponavlja – ili su ketoni visoki uz glukozu – javi se liječniku.</li>
+    <h2>${t('ket.tipsTitle')}</h2>
+    <ol>${[1, 2, 3, 4, 5].map(i => `
+      <li>${t('ket.tip' + i)}</li>`).join('')}
     </ol>
   </section>`;
 }
