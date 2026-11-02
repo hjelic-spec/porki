@@ -1,4 +1,5 @@
 // Dnevni i tjedni pregled te očekivana (iz kalorijske bilance) vs. stvarna promjena težine
+import { t } from '../i18n/index.js';
 import { addDays, mean, shortDate, sum } from './format.js';
 import { KCAL_PER_KG, burnedOf, totals } from './nutrition.js';
 
@@ -10,11 +11,11 @@ export function dayBalance(db, d) {
 }
 export function weekData(db, ws) {
   return [...Array(7)].map((_, i) => {
-    const d = addDays(ws, i), fl = dayFood(db, d), t = totals(fl), e = db.energy[d], burned = burnedOf(e);
+    const d = addDays(ws, i), fl = dayFood(db, d), tot = totals(fl), e = db.energy[d], burned = burnedOf(e);
     const ks = db.ketones.filter(k => k.date === d);
     return {
-      d, logged: fl.length > 0, ...t, burned, steps: e?.steps ?? null,
-      balance: fl.length && burned != null ? t.kcal - burned : null,
+      d, logged: fl.length > 0, ...tot, burned, steps: e?.steps ?? null,
+      balance: fl.length && burned != null ? tot.kcal - burned : null,
       weight: db.weights[d] ?? null,
       ket: ks.length ? Math.max(...ks.map(k => k.ket)) : null,
       glu: ks.length ? Math.max(...ks.map(k => k.glu || 0)) : null
@@ -36,8 +37,8 @@ export function weekEnergyVsScale(db, ws) {
   const expectedWeek = B.length >= 3 ? mean(B.map(x => x.balance)) * 7 / KCAL_PER_KG : null; // procjena za 7 dana
   const wNow = wd.filter(x => x.weight != null), wPrev = prev.filter(x => x.weight != null);
   let actual = null, actualHow = '';
-  if (wNow.length && wPrev.length) { actual = mean(wNow.map(x => x.weight)) - mean(wPrev.map(x => x.weight)); actualHow = 'prosjek tjedna u odnosu na prošli tjedan'; }
-  else if (wNow.length >= 2) { actual = wNow.at(-1).weight - wNow[0].weight; actualHow = `od ${shortDate(wNow[0].d)} do ${shortDate(wNow.at(-1).d)}`; }
+  if (wNow.length && wPrev.length) { actual = mean(wNow.map(x => x.weight)) - mean(wPrev.map(x => x.weight)); actualHow = t('an.actualAvg'); }
+  else if (wNow.length >= 2) { actual = wNow.at(-1).weight - wNow[0].weight; actualHow = t('an.actualRange', { from: shortDate(wNow[0].d), to: shortDate(wNow.at(-1).d) }); }
   const avgBal = B.length ? sumBal / B.length : null;
   const avgW = mean([...wNow, ...wPrev].map(x => x.weight));
   return { ws, days: B.length, sumBal, avgBal, expected, expectedWeek, actual, actualHow, avgW, wd };

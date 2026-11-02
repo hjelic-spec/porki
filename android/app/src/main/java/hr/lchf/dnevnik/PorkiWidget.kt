@@ -50,12 +50,16 @@ class PorkiWidget : AppWidgetProvider() {
         private const val ACTION_TICK = "hr.lchf.dnevnik.WIDGET_TICK"
         private const val CHANNEL = "porki_fast"
         private val HR: Locale = Locale.forLanguageTag("hr-HR")
+        // Jezik aplikacije (WidgetBridge.update šalje "lang"); postavlja se na početku build() i notifyGoal()
+        private var en = false
+        private fun tr(hr: String, en: String) = if (this.en) en else hr
+        private fun loc(): Locale = if (en) Locale.UK else HR
         private val PHASES = listOf(
-            0.0 to "Probava zadnjeg obroka",
-            4.0 to "Inzulin pada, troši se glikogen",
-            12.0 to "Pojačano sagorijevanje masti i ketoni",
-            18.0 to "Duboka ketoza",
-            24.0 to "Produženi post – pij vodu i elektrolite"
+            0.0 to ("Probava zadnjeg obroka" to "Digesting the last meal"),
+            4.0 to ("Inzulin pada, troši se glikogen" to "Insulin falls, glycogen is used"),
+            12.0 to ("Pojačano sagorijevanje masti i ketoni" to "More fat burning and ketones"),
+            18.0 to ("Duboka ketoza" to "Deep ketosis"),
+            24.0 to ("Produženi post – pij vodu i elektrolite" to "Extended fast – drink water, electrolytes")
         )
 
         private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -79,13 +83,14 @@ class PorkiWidget : AppWidgetProvider() {
         }
 
         private fun notifyGoal(context: Context, goal: Float) {
+            en = prefs(context).getString("lang", "hr") == "en"
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Post", NotificationManager.IMPORTANCE_DEFAULT))
+            if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, tr("Post", "Fasting"), NotificationManager.IMPORTANCE_DEFAULT))
             val open = launch(context, "fast", 4)
             val n = NotificationCompat.Builder(context, CHANNEL)
                 .setSmallIcon(android.R.drawable.ic_popup_reminder)
-                .setContentTitle("Post je završen")
-                .setContentText("Cilj od ${Math.round(goal)} h je ostvaren. Vrijeme za obrok!")
+                .setContentTitle(tr("Post je završen", "Fast complete"))
+                .setContentText(tr("Cilj od ${Math.round(goal)} h je ostvaren. Vrijeme za obrok!", "Your ${Math.round(goal)} h goal is reached. Time to eat!"))
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .build()
@@ -124,10 +129,10 @@ class PorkiWidget : AppWidgetProvider() {
         }
 
         private fun signed(x: Double, dec: Int): String =
-            (if (x > 0) "+" else if (x < 0) "−" else "±") + String.format(HR, "%.${dec}f", Math.abs(x))
+            (if (x > 0) "+" else if (x < 0) "−" else "±") + String.format(loc(), "%.${dec}f", Math.abs(x))
 
         private fun shortDay(iso: String): String =
-            iso.split("-").let { if (it.size == 3) "${it[2].toInt()}.${it[1].toInt()}." else "" }
+            iso.split("-").let { if (it.size == 3) (if (en) "${it[2].toInt()}/${it[1].toInt()}" else "${it[2].toInt()}.${it[1].toInt()}.") else "" }
 
         private fun goalLabel(goal: Double): String {
             val g = Math.round(goal).toInt()
@@ -142,11 +147,12 @@ class PorkiWidget : AppWidgetProvider() {
         private fun whenTxt(t: Long, today: String): String {
             val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(t))
             val hm = SimpleDateFormat("HH:mm", HR).format(Date(t))
-            return if (day == today) hm else SimpleDateFormat("d.M.", HR).format(Date(t)) + " " + hm
+            return if (day == today) hm else SimpleDateFormat(if (en) "d/M" else "d.M.", HR).format(Date(t)) + " " + hm
         }
 
         fun build(context: Context): RemoteViews {
             val p = prefs(context)
+            en = p.getString("lang", "hr") == "en"
             val v = RemoteViews(context.packageName, R.layout.widget_porki)
             val now = System.currentTimeMillis()
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now))
@@ -154,7 +160,7 @@ class PorkiWidget : AppWidgetProvider() {
             // Post
             val start = p.getLong("fastStart", 0L)
             val goal = p.getFloat("fastGoal", 16f).toDouble()
-            v.setTextViewText(R.id.w_fast_label, "Post ${goalLabel(goal)}")
+            v.setTextViewText(R.id.w_fast_label, tr("Post", "Fast") + " ${goalLabel(goal)}")
             if (start > 0 && start <= now) {
                 // post traje do prvog obroka; prozor za jelo traje 24 − cilj sati, zatim novi post od zadnjeg obroka
                 val fastMs = (goal * 3600_000).toLong()
@@ -183,25 +189,25 @@ class PorkiWidget : AppWidgetProvider() {
                 val mins = shown / 60_000
                 v.setTextViewText(R.id.w_clock, if (mins >= 600) "${mins / 60}h ${String.format(HR, "%02d", mins % 60)}m" else "${mins / 60} h ${String.format(HR, "%02d", mins % 60)} min")
                 v.setTextColor(R.id.w_clock, ContextCompat.getColor(context, if (green) R.color.w_good else R.color.w_fast))
-                v.setTextViewText(R.id.w_fast_label, when { eating -> "Jelo, još"; done -> "Možeš jesti"; else -> "Post ${goalLabel(goal)}" })
+                v.setTextViewText(R.id.w_fast_label, when { eating -> tr("Jelo, još", "Eating, left"); done -> tr("Možeš jesti", "You can eat"); else -> tr("Post", "Fast") + " ${goalLabel(goal)}" })
                 v.setTextViewText(
                     R.id.w_fast_info,
                     when {
-                        eating -> "Jelo do ${whenTxt(ps + eatMs, today)} · zatim post ${Math.round(goal)} h"
-                        done -> "Cilj ostvaren ${whenTxt(ps + fastMs, today)} · +${hours(el - fastMs)}"
-                        else -> "Početak ${whenTxt(ps, today)} · cilj ${whenTxt(ps + fastMs, today)}"
+                        eating -> tr("Jelo do ${whenTxt(ps + eatMs, today)} · zatim post ${Math.round(goal)} h", "Eat until ${whenTxt(ps + eatMs, today)} · then a ${Math.round(goal)} h fast")
+                        done -> tr("Cilj ostvaren ${whenTxt(ps + fastMs, today)} · +${hours(el - fastMs)}", "Goal reached ${whenTxt(ps + fastMs, today)} · +${hours(el - fastMs)}")
+                        else -> tr("Početak ${whenTxt(ps, today)} · cilj ${whenTxt(ps + fastMs, today)}", "Started ${whenTxt(ps, today)} · goal ${whenTxt(ps + fastMs, today)}")
                     }
                 )
                 v.setTextViewText(R.id.w_fast_phase, when {
-                    eating -> "Prozor za jelo · novi post od zadnjeg obroka"
-                    done && eatMs > 0 -> "Brojač ide dalje do prvog obroka"
-                    else -> PHASES.last { el / 3600_000.0 >= it.first }.second
+                    eating -> tr("Prozor za jelo · novi post od zadnjeg obroka", "Eating window · new fast from the last meal")
+                    done && eatMs > 0 -> tr("Brojač ide dalje do prvog obroka", "Timer keeps running until the first meal")
+                    else -> PHASES.last { el / 3600_000.0 >= it.first }.second.let { tr(it.first, it.second) }
                 })
                 if (done && eatMs > 0) {
-                    v.setTextViewText(R.id.w_fast_btn, "Jedem")
+                    v.setTextViewText(R.id.w_fast_btn, tr("Jedem", "Eat"))
                     v.setOnClickPendingIntent(R.id.w_fast_btn, launch(context, "fast_eat", 9))
                 } else {
-                    v.setTextViewText(R.id.w_fast_btn, "Završi")
+                    v.setTextViewText(R.id.w_fast_btn, tr("Završi", "End"))
                     v.setOnClickPendingIntent(R.id.w_fast_btn, launch(context, "fast_end", 5))
                 }
                 scheduleTick(context, ps)
@@ -210,11 +216,12 @@ class PorkiWidget : AppWidgetProvider() {
                 scheduleTick(context, 0L)
                 v.setViewVisibility(R.id.w_clock, View.GONE)
                 v.setViewVisibility(R.id.w_fast_off, View.VISIBLE)
+                v.setTextViewText(R.id.w_fast_off, tr("nije aktivan", "not active"))
                 v.setViewVisibility(R.id.w_progress, View.GONE)
                 v.setViewVisibility(R.id.w_progress_eat, View.GONE)
                 v.setViewVisibility(R.id.w_fast_phase, View.GONE)
-                v.setTextViewText(R.id.w_fast_info, "Cilj ${Math.round(goal)} h · Započni pokreće post odmah")
-                v.setTextViewText(R.id.w_fast_btn, "Započni")
+                v.setTextViewText(R.id.w_fast_info, tr("Cilj ${Math.round(goal)} h · Započni pokreće post odmah", "Goal ${Math.round(goal)} h · Start begins the fast now"))
+                v.setTextViewText(R.id.w_fast_btn, tr("Započni", "Start"))
                 v.setOnClickPendingIntent(R.id.w_fast_btn, broadcast(context, ACTION_FAST_START, 6))
                 scheduleGoal(context, 0L, 0L)
             }
@@ -223,21 +230,21 @@ class PorkiWidget : AppWidgetProvider() {
             val weight = p.getFloat("weight", 0f)
             val color = { id: Int -> ContextCompat.getColor(context, id) }
             if (weight > 0f) {
-                v.setTextViewText(R.id.w_weight, String.format(HR, "%.1f kg", weight))
+                v.setTextViewText(R.id.w_weight, String.format(loc(), "%.1f kg", weight))
                 val wd = p.getString("weightDate", "") ?: ""
                 if (p.contains("weightDiff")) {
                     val d = p.getFloat("weightDiff", 0f)
                     val ref = p.getString("weightDiffRef", "") ?: ""
                     val day = if (wd == today) "" else "${shortDay(wd)}: "
-                    v.setTextViewText(R.id.w_weight_info, "$day${signed(d.toDouble(), 1)} kg od $ref")
+                    v.setTextViewText(R.id.w_weight_info, "$day${signed(d.toDouble(), 1)} kg " + tr("od", "since") + " $ref")
                     v.setTextColor(R.id.w_weight_info, color(if (d < 0f) R.color.w_good else if (d > 0f) R.color.w_bad else R.color.w_muted))
                 } else {
-                    v.setTextViewText(R.id.w_weight_info, if (wd == today) "danas" else shortDay(wd))
+                    v.setTextViewText(R.id.w_weight_info, if (wd == today) tr("danas", "today") else shortDay(wd))
                     v.setTextColor(R.id.w_weight_info, color(R.color.w_muted))
                 }
             } else {
                 v.setTextViewText(R.id.w_weight, "– kg")
-                v.setTextViewText(R.id.w_weight_info, "još nema mjerenja")
+                v.setTextViewText(R.id.w_weight_info, tr("još nema mjerenja", "no weigh-ins yet"))
                 v.setTextColor(R.id.w_weight_info, color(R.color.w_muted))
             }
 
@@ -247,7 +254,7 @@ class PorkiWidget : AppWidgetProvider() {
             var tone = 0f
             if (fresh && p.contains("balToday")) {
                 val bt = p.getFloat("balToday", 0f).toDouble()
-                parts += "danas ${signed(bt, 0)} kcal ≈ ${signed(bt / 7700, 2)} kg"
+                parts += tr("danas", "today") + " ${signed(bt, 0)} kcal ≈ ${signed(bt / 7700, 2)} kg"
                 tone = bt.toFloat()
             }
             if (fresh && p.contains("balWeek")) {
@@ -256,17 +263,17 @@ class PorkiWidget : AppWidgetProvider() {
                 tone = bw.toFloat()
             }
             if (parts.isEmpty()) {
-                v.setTextViewText(R.id.w_balance, "Bilanca: unesi hranu i potrošnju")
+                v.setTextViewText(R.id.w_balance, tr("Bilanca: unesi hranu i potrošnju", "Balance: log food and calories burned"))
                 v.setTextColor(R.id.w_balance, color(R.color.w_muted))
             } else {
-                v.setTextViewText(R.id.w_balance, "Bilanca " + parts.joinToString(" · "))
+                v.setTextViewText(R.id.w_balance, tr("Bilanca ", "Balance ") + parts.joinToString(" · "))
                 v.setTextColor(R.id.w_balance, color(if (tone < 0f) R.color.w_good else if (tone > 0f) R.color.w_bad else R.color.w_muted))
             }
 
             // Neto UH danas (crveno iznad limita)
             val carbs = if (p.getString("carbDate", "") == today) p.getFloat("carbs", 0f) else 0f
             val limit = p.getFloat("carbLimit", 25f)
-            v.setTextViewText(R.id.w_carbs, String.format(HR, "UH %.0f / %.0f g", carbs, limit))
+            v.setTextViewText(R.id.w_carbs, String.format(loc(), tr("UH", "Carbs") + " %.0f / %.0f g", carbs, limit))
             v.setTextColor(R.id.w_carbs, ContextCompat.getColor(context, if (carbs > limit) R.color.w_bad else R.color.w_muted))
 
             v.setOnClickPendingIntent(R.id.w_fast, launch(context, "fast", 1))
@@ -275,19 +282,19 @@ class PorkiWidget : AppWidgetProvider() {
             if (ketText.isNotEmpty()) {
                 val kd = p.getString("ketDate", "") ?: ""
                 val ago = when (kd) {
-                    today -> "danas"
-                    SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now - 86_400_000)) -> "jučer"
+                    today -> tr("danas", "today")
+                    SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now - 86_400_000)) -> tr("jučer", "yesterday")
                     else -> shortDay(kd)
                 }
                 val time = p.getString("ketTime", "") ?: ""
-                val glu = if (p.getBoolean("gluWarn", false)) " · glukoza!" else ""
-                v.setTextViewText(R.id.w_ket, "Ketoni $ketText · ${if (kd == today && time.isNotEmpty()) time else ago}$glu")
+                val glu = if (p.getBoolean("gluWarn", false)) tr(" · glukoza!", " · glucose!") else ""
+                v.setTextViewText(R.id.w_ket, tr("Ketoni", "Ketones") + " $ketText · ${if (kd == today && time.isNotEmpty()) time else ago}$glu")
                 v.setTextColor(R.id.w_ket, color(if (glu.isNotEmpty()) R.color.w_bad else R.color.w_ink))
                 v.setViewVisibility(R.id.w_ket_dot, View.VISIBLE)
                 v.setInt(R.id.w_ket_dot, "setColorFilter", p.getInt("ketColor", 0xFFEFE3C9.toInt()))
             } else {
                 v.setViewVisibility(R.id.w_ket_dot, View.GONE)
-                v.setTextViewText(R.id.w_ket, "Ketoni: još nema mjerenja")
+                v.setTextViewText(R.id.w_ket, tr("Ketoni: još nema mjerenja", "Ketones: no readings yet"))
                 v.setTextColor(R.id.w_ket, color(R.color.w_muted))
             }
             val prot = if (p.getString("carbDate", "") == today) p.getFloat("protein", 0f) else 0f

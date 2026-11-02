@@ -15,6 +15,8 @@ Jednostavna aplikacija za kontrolu težine – optimizirana za LCHF / keto, a po
 - **Analiza** – tjedni prosjeci, automatski uvidi, očekivani gubitak iz kalorijske bilance u usporedbi sa stvarnim (tjedan i 8 tjedana) s objašnjenjem i zdravstvenim savjetima, grafovi, tablica po danima i trend zadnjih 8 tjedana
 - **Android widget** – post s timerom, fazom i napretkom (pokreni ga gumbom „Započni“ bez otvaranja aplikacije), težina s promjenom od jučer, UH danas i očekivana promjena težine prema kalorijskoj bilanci (danas i 7 dana), zadnje mjerenje ketona i proteini danas; dodir na težinu otvara unos kg, na UH dodavanje hrane, na ketone karticu Ketoni
 
+**Jezik:** hrvatski ili engleski (Postavke → Jezik). Nova instalacija preuzima jezik uređaja, a postojeći korisnici ostaju na hrvatskom. Baza namirnica i recepti zasad su samo na hrvatskom.
+
 Svi podaci ostaju **samo na uređaju**. Sigurnosnu kopiju napraviš u Postavke → Izvezi kopiju: u Android aplikaciji otvara se izbornik Dijeli (Google disk, Datoteke, e-mail…), a u web-verziji se preuzima datoteka. Uvezi kopiju vraća podatke iz te datoteke (i s Google diska).
 
 ## Android aplikacija (preporučeno – automatski uvoz iz Health Connecta)
@@ -53,5 +55,6 @@ Struktura `www/js/`:
 - `dialogs/` – unos hrane, pretraga i skener, ostali unosi, postavke
 - `native/` – Health Connect i Android widget
 - `reports.js`, `backup.js`, `app.js` – izvještaji, kopija i ulazna točka (radnje i pokretanje)
+- `i18n/` – prijevodi: `hr.js` i `en.js` s istim ključevima, `t('ključ', { parametri })` u kodu; test provjerava da oba jezika imaju sve ključeve i iste parametre
 
 Testovi se pokreću i na GitHubu pri svakom pushu, a objava web-verzije čeka da prođu. Novi modul u `www/js/` treba dodati i na popis u `www/sw.js` (test to provjerava).

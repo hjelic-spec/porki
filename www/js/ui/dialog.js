@@ -2,6 +2,7 @@
 import { h } from '../core/format.js';
 import { $ } from './dom.js';
 import { render } from './render.js';
+import { t } from '../i18n/index.js';
 
 /* ================= Dijalozi ================= */
 export const dlg = $('#dlg');
@@ -14,7 +15,7 @@ export function openDialog(html, onSubmit, onReady) {
     const submit = [...form.querySelectorAll('button')].filter(b => b.type === 'submit').at(-1);
     const head = document.createElement('div');
     head.className = 'sheet-head';
-    head.innerHTML = `<span class="sheet-actions">${submit ? `<button class="btn primary sm">${h(submit.textContent.trim())}</button>` : ''}<button type="button" class="icon-btn" data-action="close" aria-label="Zatvori">✕</button></span>`;
+    head.innerHTML = `<span class="sheet-actions">${submit ? `<button class="btn primary sm">${h(submit.textContent.trim())}</button>` : ''}<button type="button" class="icon-btn" data-action="close" aria-label="${t('btn.close')}">✕</button></span>`;
     title.replaceWith(head);
     head.prepend(title);
   }

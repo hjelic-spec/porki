@@ -1,0 +1,5 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- Opis widgeta u popisu widgeta kad je jezik uređaja engleski -->
+<resources>
+    <string name="widget_desc">Fasting, weight and quick entry</string>
+</resources>

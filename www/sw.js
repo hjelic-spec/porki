@@ -1,5 +1,5 @@
 // Offline cache aplikacijske ljuske. Povećaj VERSION pri svakoj objavi.
-const VERSION = 'porki-v30';
+const VERSION = 'porki-v31';
 const MODULES = [
   './js/app.js',
   './js/backup.js',
@@ -14,6 +14,9 @@ const MODULES = [
   './js/dialogs/scanner.js',
   './js/dialogs/search.js',
   './js/dialogs/settings.js',
+  './js/i18n/en.js',
+  './js/i18n/hr.js',
+  './js/i18n/index.js',
   './js/native/health.js',
   './js/native/widget.js',
   './js/reports.js',
