@@ -3,13 +3,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { dayLabel, fmt, fullDate, sgn, shortDate } from '../www/js/core/format.js';
 import { KET } from '../www/js/core/ketones.js';
 import { DIETS } from '../www/js/core/nutrition.js';
+import dataEn from '../www/js/i18n/data-en.js';
 import en from '../www/js/i18n/en.js';
 import hr from '../www/js/i18n/hr.js';
-import { deviceLang, getLang, setLang, t } from '../www/js/i18n/index.js';
+import { deviceLang, foodName, getLang, recipeName, setLang, t } from '../www/js/i18n/index.js';
 
 const js = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'www', 'js');
 const params = v => typeof v === 'string' ? [...v.matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort() : null;
@@ -93,4 +95,43 @@ test('jezik uređaja: hrvatski i srodni jezici → hr, ostalo → en', () => {
   assert.equal(deviceLang(['en-US', 'hr']), 'hr');
   assert.equal(deviceLang(['de-DE']), 'en');
   assert.equal(deviceLang([]), 'en');
+});
+
+// foods.js i recipes.js su obične skripte s globalnim konstantama
+const loadData = (file, names) => {
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(js, '..', file), 'utf8') + `;this.out = { ${names} };`, ctx);
+  return ctx.out;
+};
+
+test('svaka namirnica, sekcija i recept ima engleski prijevod', () => {
+  const { FOOD_SECTIONS, FOOD_DB } = loadData('foods.js', 'FOOD_SECTIONS, FOOD_DB');
+  const { RECIPES } = loadData('recipes.js', 'RECIPES');
+  for (const row of FOOD_DB) assert.ok(dataEn.foods[row[0]], `namirnica bez prijevoda: ${row[0]}`);
+  for (const s of FOOD_SECTIONS) {
+    for (const k of ['title', 'ntitle', 'intro', 'nintro']) if (s[k]) assert.ok(dataEn.text[s[k]], `sekcija bez prijevoda: ${s[k]}`);
+    for (const g of s.groups) for (const k of ['title', 'ntitle']) if (g[k]) assert.ok(dataEn.text[g[k]], `skupina bez prijevoda: ${g[k]}`);
+  }
+  for (const r of RECIPES) {
+    const tr = dataEn.recipes[r.id];
+    assert.ok(tr && tr.name, `recept bez prijevoda: ${r.id}`);
+    assert.equal(tr.steps.length, r.steps.length, `${r.id}: broj koraka`);
+    for (const [name] of r.ingredients) assert.ok(FOOD_DB.some(x => x[0] === name), `${r.id}: sastojak ${name} nije u bazi`);
+  }
+  // nema viška (zastarjelih prijevoda)
+  const names = new Set(FOOD_DB.map(x => x[0]));
+  for (const k of Object.keys(dataEn.foods)) assert.ok(names.has(k), `prijevod za nepostojeću namirnicu: ${k}`);
+  for (const k of Object.keys(dataEn.recipes)) assert.ok(RECIPES.some(r => r.id === k), `prijevod za nepostojeći recept: ${k}`);
+});
+
+test('nazivi namirnica i recepata prate jezik', () => {
+  setLang('en');
+  try {
+    assert.equal(foodName('Cvjetača'), 'Cauliflower');
+    assert.equal(foodName('Moj proizvod'), 'Moj proizvod'); // vlastite namirnice ostaju kako su upisane
+    assert.equal(recipeName({ id: 'pire-cvjetaca', name: 'Pire od cvjetače' }), 'Cauliflower mash');
+  } finally { setLang('hr'); }
+  assert.equal(foodName('Cvjetača'), 'Cvjetača');
+  assert.equal(recipeName({ id: 'pire-cvjetaca', name: 'Pire od cvjetače' }), 'Pire od cvjetače');
 });

@@ -6,14 +6,14 @@ import { dlg, openDialog } from '../ui/dialog.js';
 import { $, state, toast } from '../ui/dom.js';
 import { quickItems } from '../views/food.js';
 import { isFav, openFood } from './food.js';
-import { getLang, t } from '../i18n/index.js';
+import { dataText, foodName, getLang, t } from '../i18n/index.js';
 
 const ketoTitles = () => ['keto', 'lchf'].includes(db.settings.diet || 'lchf');
-const secTitle = s => ketoTitles() ? s.title : (s.ntitle || s.title);
-const secIntro = s => ketoTitles() ? s.intro : (s.nintro || s.intro);
-const grpTitle = g => ketoTitles() ? g.title : (g.ntitle || g.title);
+const secTitle = s => dataText(ketoTitles() ? s.title : (s.ntitle || s.title));
+const secIntro = s => dataText(ketoTitles() ? s.intro : (s.nintro || s.intro));
+const grpTitle = g => dataText(ketoTitles() ? g.title : (g.ntitle || g.title));
 const SEC_BY_TITLE = new Map(FOOD_SECTIONS.map(s => [s.title, s]));
-export const dbItem = row => { const [name, carbs, fiber, fat, protein, grams, , section] = row; const sc = SEC_BY_TITLE.get(section); return { name, carbs, fiber, fat, protein, grams, per100: true, level: dietLevel(row), section: sc ? secTitle(sc) : section, tag: 'db' }; };
+export const dbItem = row => { const [name, carbs, fiber, fat, protein, grams, , section] = row; const sc = SEC_BY_TITLE.get(section); return { name: foodName(name), carbs, fiber, fat, protein, grams, per100: true, level: dietLevel(row), section: sc ? secTitle(sc) : dataText(section), tag: 'db' }; };
 function searchItems(q) {
   // svaka riječ upita mora se pojaviti; zadnje slovo duljih riječi se zanemaruje (orah → orasi)
   const words = norm(q).split(/\s+/).filter(Boolean).map(w => w.length >= 4 ? w.slice(0, -1) : w);

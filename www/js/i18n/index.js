@@ -1,4 +1,5 @@
 // Prijevodi: t('ključ', { parametri }) vraća tekst na odabranom jeziku (hrvatski je zadani i rezervni)
+import dataEn from './data-en.js';
 import en from './en.js';
 import hr from './hr.js';
 
@@ -29,3 +30,10 @@ export function t(key, p) {
 }
 // Popis (npr. nazivi dana) iz rječnika
 export const list = key => DICTS[lang][key] ?? hr[key];
+
+/* Baza namirnica i recepti: podaci su na hrvatskom (hrvatski naziv je interni ključ), prijevod samo za prikaz */
+const DATA = { en: dataEn };
+export const foodName = name => DATA[lang]?.foods[name] ?? name;
+export const dataText = s => DATA[lang]?.text[s] ?? s;
+export const recipeName = r => DATA[lang]?.recipes[r.id]?.name ?? r.name;
+export const recipeSteps = r => DATA[lang]?.recipes[r.id]?.steps ?? r.steps;
