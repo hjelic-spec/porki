@@ -1,5 +1,7 @@
 # Porki
 
+**English user guide:** [HELP.md](HELP.md)
+
 Jednostavna aplikacija za kontrolu težine – optimizirana za LCHF / keto, a podržava i umjereni low-carb, mediteransku, visokoproteinsku i uravnoteženu prehranu.
 
 - **Prehrana i ciljevi** – odabir načina prehrane i izračun dnevnih kalorija i makronutrijenata (Mifflin-St Jeor, aktivnost, tempo mršavljenja)
