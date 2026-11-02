@@ -592,6 +592,7 @@ export default {
   'rep.reminderSet': 'Reminder: {day} at {time}',
 
   /* Navigacija */
+  'app.description': "Track weight, ketones, macronutrients and calories burned on an LCHF diet",
   'nav.today': "Today",
   'nav.food': "Food",
   'nav.weight': "Weight",

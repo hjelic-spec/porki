@@ -1,5 +1,5 @@
 // Offline cache aplikacijske ljuske. Povećaj VERSION pri svakoj objavi.
-const VERSION = 'porki-v32';
+const VERSION = 'porki-v33';
 const MODULES = [
   './js/app.js',
   './js/backup.js',
@@ -34,7 +34,7 @@ const MODULES = [
   './js/views/today.js',
   './js/views/weight.js'
 ];
-const ASSETS = [...MODULES, './', './index.html', './foods.js', './recipes.js', './vendor/zxing.min.js', './styles.css', './capacitor.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable.png', './privacy.html'];
+const ASSETS = [...MODULES, './', './index.html', './foods.js', './recipes.js', './vendor/zxing.min.js', './styles.css', './capacitor.js', './manifest.webmanifest', './manifest-en.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable.png', './privacy.html', './privacy-en.html'];
 
 self.addEventListener('install', ev => {
   ev.waitUntil(caches.open(VERSION).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
