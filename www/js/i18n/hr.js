@@ -592,6 +592,7 @@ export default {
   'rep.reminderSet': p => `Podsjetnik: ${p.day.toLowerCase()} u ${p.time}`,
 
   /* Navigacija */
+  'app.description': "Praćenje težine, ketona, makronutrijenata i potrošnje kalorija za LCHF prehranu",
   'nav.today': "Danas",
   'nav.food': "Hrana",
   'nav.weight': "Težina",
