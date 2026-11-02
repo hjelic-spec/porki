@@ -337,6 +337,7 @@ export default {
   'recipe.portions': "Broj porcija za unos",
   'recipe.inFavs': "★ U favoritima",
   'recipe.toFavs': "☆ U favorite",
+  'recipe.carbsShare': "UH",
   'recipe.addToMeal': "Dodaj u obrok",
   'toast.added': "Dodano: {name}",
 

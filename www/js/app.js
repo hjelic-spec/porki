@@ -1,5 +1,5 @@
 // Ulazna točka: radnje (data-action), događaji i pokretanje
-import { deviceLang, setLang, t } from './i18n/index.js';
+import { deviceLang, recipeName, setLang, t } from './i18n/index.js';
 import { addDays, fmt, norm, num, r1, sgn, shortDate, today, uid } from './core/format.js';
 import { exportData, importData } from './backup.js';
 import { fillEmptyEnergy, openEnergy, openEnergyBulk, openKetone } from './dialogs/entries.js';
@@ -64,7 +64,7 @@ const actions = {
   'recipe-fav': el => {
     const r = RECIPES.find(x => x.id === el.dataset.id); if (!r) return;
     const m = recipeMacros(r);
-    const on = toggleFavorite({ name: r.name, per100: false, grams: m.grams, carbs: m.carbs, fiber: m.fiber, fat: m.fat, protein: m.protein, inc: false });
+    const on = toggleFavorite({ name: recipeName(r), per100: false, grams: m.grams, carbs: m.carbs, fiber: m.fiber, fat: m.fat, protein: m.protein, inc: false });
     el.textContent = on ? '★ U favoritima' : '☆ U favorite';
     toast(on ? t('fav.recipeAdded') : t('fav.removed'));
   },

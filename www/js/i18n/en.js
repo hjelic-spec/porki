@@ -337,6 +337,7 @@ export default {
   'recipe.portions': "Servings to log",
   'recipe.inFavs': "★ In favourites",
   'recipe.toFavs': "☆ Add to favourites",
+  'recipe.carbsShare': "Net carbs",
   'recipe.addToMeal': "Add to meal",
   'toast.added': "Added: {name}",
 
